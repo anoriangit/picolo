@@ -33,7 +33,7 @@ set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
 
-project(hello_world C CXX ASM)
+project(picolo C CXX ASM)
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()

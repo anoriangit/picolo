@@ -993,7 +993,7 @@ int e_Edit(char* filename) {
 		case 127:	// DEL
 			_HandleDel();
 			break;
-		case 13:	// newline
+		case 10:	// newline
 			_handleNewLine();
 			break;
 		default:

@@ -247,7 +247,7 @@ char *ShellReadInput() {
 		if (_HandleBackspace())
 			b_dirty = 1;	// if the backspacing actually resulted in a change: raise dirty flag
 		break;
-	case 13:	// carriage return
+	case 10:	// new line
 		if (b_dirty) {
             line = editor_line;
 		}

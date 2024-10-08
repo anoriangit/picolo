@@ -100,6 +100,19 @@ uint32_t getFreeHeap(void) {
    return getTotalHeap() - m.uordblks;
 }
 
+static uint64_t framecount = 0;
+static uint64_t auto_repeat_timer;
+static int auto_repeat_key = 0;
+
+void StartKeyRepeat(int k) {
+	auto_repeat_key = k;
+	auto_repeat_timer = framecount;
+}
+
+void StopKeyRepeat() {
+	auto_repeat_key = 0;
+}
+
 // 50hz regular updates
 bool display_timer_callback(__unused struct repeating_timer *t) {
     //printf("Repeat at %lld\n", time_us_64());
@@ -108,6 +121,11 @@ bool display_timer_callback(__unused struct repeating_timer *t) {
 
    	tuh_task();
 
+	if(auto_repeat_key && (framecount > auto_repeat_timer  + 30)) {
+		ConStoreCharacter(auto_repeat_key);
+	}
+
+	framecount++;
     return true;
 }
 
@@ -179,16 +197,16 @@ int __not_in_flash("main") main() {
 
 	// drive text display and tuh at 50hz
     struct repeating_timer timer;
-    add_repeating_timer_ms(20, display_timer_callback, NULL, &timer);
+    add_repeating_timer_ms(-20, display_timer_callback, NULL, &timer);
 
 	while (1) {
 
-		char *line = ShellReadInput();
+		char *line = ShellReadInput();	// does not block
 		if(line) {
-			ShellProcessLine(line);
+			// might start a shell process (such as editor) and not return for duration
+			ShellProcessLine(line);		
 		}
-
-
+		
 //		__wfi();
 
 	}

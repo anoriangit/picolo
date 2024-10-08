@@ -57,6 +57,9 @@ void hid_app_task(void)
   // nothing to do
 }
 
+extern void StartKeyRepeat(int k);
+extern void StopKeyRepeat();
+
 //--------------------------------------------------------------------+
 // TinyUSB Callbacks
 //--------------------------------------------------------------------+
@@ -143,30 +146,38 @@ static inline bool find_key_in_report(hid_keyboard_report_t const *report, uint8
   return false;
 }
 
+// one of these is received for any key press and release
 static void process_kbd_report(hid_keyboard_report_t const *report)
 {
   static hid_keyboard_report_t prev_report = { 0, 0, {0} }; // previous report to check key released
 
-  //------------- example code ignore control (non-printable) key affects -------------//
+  //printf("HID keyboard report\n");
   for(uint8_t i=0; i<6; i++)
   {
     if ( report->keycode[i] )
     {
       if ( find_key_in_report(&prev_report, report->keycode[i]) )
       {
-        // exist in previous report means the current key is holding
+        // exist in previous report means the current key is still being held 
+        // while a new key was pressed: simply ignore it
       }else
       {
         // not existed in previous report means the current key is pressed
         bool const is_shift = report->modifier & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT);
         uint8_t ch = keycode2ascii[report->keycode[i]][is_shift ? 1 : 0];
-        
         //putchar(ch);
         ConStoreCharacter(ch);
-        //fflush(stdout); // flush right away, else nanolib will wait for newline
+        StartKeyRepeat(ch);
       }
     }
-    // TODO example skips key released
+    // test for released keys: will have been in last record but not in the current one
+    if(prev_report.keycode[i]) {
+      if (!find_key_in_report(report, prev_report.keycode[i]) ) {
+          // key release event
+          printf("key release event\n");
+          StopKeyRepeat();
+      }
+    }
   }
 
   prev_report = *report;
