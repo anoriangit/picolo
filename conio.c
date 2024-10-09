@@ -321,10 +321,13 @@ void ConEchoOff() {
 // but for now just characters will do
 void ConStoreCharacter(int c) {
 
-	if((c >= 32 && c < 127) || c == 13 || c == 8) {
+	if((c >= 32 && c < 127) || c == 13 || c == 8 || M16_META_CHAR(c)) {
 		if(c == 13) 	// HID will deliver 13 (CR) for the return key
 			c = 10;		// for our purposes we want 10 (LF) though
-			
+
+		if(c==M16_CON_CURSOR_RIGHT)
+			printf("cursor right meta key\n");
+
 		StreamWriteCharacter(c, &CSTDIN);
 
 		//putchar(c);

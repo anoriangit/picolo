@@ -164,18 +164,57 @@ static void process_kbd_report(hid_keyboard_report_t const *report)
       {
         // not existed in previous report means the current key is pressed
         bool const is_shift = report->modifier & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT);
+
         uint8_t ch = keycode2ascii[report->keycode[i]][is_shift ? 1 : 0];
-        //putchar(ch);
-        ConStoreCharacter(ch);
-        StartKeyRepeat(ch);
+
+        switch(report->keycode[i]) {
+          case HID_KEY_ARROW_LEFT:
+              ch = M16_CON_CURSOR_LEFT;
+              break;
+          case HID_KEY_ARROW_RIGHT:
+              //printf("Arrow right\n");
+              ch = M16_CON_CURSOR_RIGHT;
+              break;
+          case HID_KEY_ARROW_UP:
+              ch = M16_CON_CURSOR_UP;
+              break;
+          case HID_KEY_ARROW_DOWN:
+              ch = M16_CON_CURSOR_DOWN;
+              break;
+        } 
+        // not differentiating left/right ctrl or alt right now
+        //bool is_ctrl = report->modifier & (KEYBOARD_MODIFIER_LEFTCTRL|KEYBOARD_MODIFIER_RIGHTCTRL);
+        if(report->modifier & (KEYBOARD_MODIFIER_LEFTCTRL|KEYBOARD_MODIFIER_RIGHTCTRL)) {
+          switch(ch) {
+            case 'b':
+            case 'B':
+                ConStoreCharacter(M16_CON_CTRL_B);
+              break;
+            case 'q':
+            case 'Q':
+                ConStoreCharacter(M16_CON_CTRL_Q);
+              break;
+            case 's':
+            case 'S':
+                ConStoreCharacter(M16_CON_CTRL_S);
+              break;
+            case 'l':
+            case 'L':
+                ConStoreCharacter(M16_CON_CTRL_L);
+              break;
+          }
+        } else {
+          ConStoreCharacter(ch);  // ConStoreCharacter() does input validation: just pass in whatever
+          StartKeyRepeat(ch);
+        }
       }
     }
     // test for released keys: will have been in last record but not in the current one
     if(prev_report.keycode[i]) {
       if (!find_key_in_report(report, prev_report.keycode[i]) ) {
           // key release event
-          printf("key release event\n");
-          StopKeyRepeat();
+          // printf("key release event\n");
+          StopKeyRepeat();  // stop any possibly ongoing key auto repeat
       }
     }
   }

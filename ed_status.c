@@ -19,7 +19,7 @@
 #define STATUS_FNAME_LEN 20
 
 // display the status line (and the separator one line above it)
-#define EXTRA_STATUS_TEXT_LEN 16
+#define EXTRA_STATUS_TEXT_LEN 20
 static char status_text[LINE_MAX_CHARS + 1];
 static char extra_status_text[EXTRA_STATUS_TEXT_LEN + 1];
 
@@ -101,7 +101,7 @@ void e_PrintStatusLine() {
 	}
 
 	char* fname = _MassageFilename(CB->source_filename);
-	sprintf(status_text, "[%d]%s%c l:%d/%d c:%d  %s", CBI, fname, (CB->b_dirty ? '*' : ' '), CB->C.row + 1, CB->next_line, CB->C.col + 1, extra_status_text);
+	snprintf(status_text, LINE_MAX_CHARS, "[%d]%s%c l:%d/%d c:%d  %s", CBI, fname, (CB->b_dirty ? '*' : ' '), CB->C.row + 1, CB->next_line, CB->C.col + 1, extra_status_text);
 	puts(status_text);
 	ConSetCursorPos(dcr, dcc);
 }

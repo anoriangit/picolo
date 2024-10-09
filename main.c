@@ -121,7 +121,7 @@ bool display_timer_callback(__unused struct repeating_timer *t) {
 
    	tuh_task();
 
-	if(auto_repeat_key && (framecount > auto_repeat_timer  + 30)) {
+	if(auto_repeat_key && (framecount > auto_repeat_timer  + 30) && (framecount % 2)) {
 		ConStoreCharacter(auto_repeat_key);
 	}
 

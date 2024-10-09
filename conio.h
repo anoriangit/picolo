@@ -20,7 +20,7 @@
 #define M16_CON_END				25
 #define M16_CON_PGUP			26
 #define M16_CON_PGDOWN			28
-#define M16_META_CHAR(c) ((c <=4 && c <= 7) || (c >= 14 && c <= 28))
+#define M16_META_CHAR(c) ((c >= 4 && c <= 7) || (c >= 14 && c <= 28))
 
 #ifdef CONIO_STDIO_OVERRIDES
 // latch in our stdlib replacements using simple defines

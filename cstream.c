@@ -1,5 +1,9 @@
 
 
+#ifdef CONIO_DEBUG_PRINT
+#include <stdio.h>
+#endif
+
 #include "cstream.h"
 
 
@@ -19,7 +23,12 @@ void StreamWriteCharacter(int c, struct CharacterStream *stream) {
 	if (stream->size_remaining) {
 		*stream->write_pointer++ = c;
 		stream->size_remaining--;
+	} 
+#ifdef CONIO_DEBUG_PRINT
+	else {
+		printf("Warning: stream overflow\n");
 	}
+#endif
 }
 
 // returns 0 if nothing to read

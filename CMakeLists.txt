@@ -94,6 +94,8 @@ add_subdirectory(${PICO_FOLDER}/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico/src "${CMAKE_CU
 target_compile_definitions(picolo PRIVATE
 	DVI_DEFAULT_SERIAL_CONFIG=${DVI_DEFAULT_SERIAL_CONFIG}
     
+    # tglib
+    CONIO_DEBUG_PRINT=1
     # tinyusb
     CFG_TUSB_MCU=OPT_MCU_RP2040
 

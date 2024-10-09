@@ -106,6 +106,7 @@ static int _getBasicSource() {
 // display the complete currently visible page
 void e_PrintPage() {
 	//ClearDisplay(P_MemoryRead(P_MEM_SV_BGCOLOR));
+    ClearTextDisplay();
 	ConSetCursorPos(0, 0);
 	for (int row = CB->C.row; row < CB->C.row + W.n_rows && row < CB->next_line; row++) {
 		printf("%s\n", CB->out_lines[row]);
@@ -615,7 +616,7 @@ static int _bufferLoad(char* filename) {
 
 static void _DoBufferSwitch() {
 	// prompt the user for buffer number
-	e_SetExtraStatusText("Select buffer by pressing a number key.");
+	e_SetExtraStatusText("Press key 0-9");
 	e_PrintStatusLine();
 	int k;
 	do {
@@ -668,19 +669,26 @@ static void _DoBufferSwitch() {
 
 static void _createHelpPage() {
 	char line[80];
-
-	_addListLine("-------------------------------------------------------------------------------");
+	
+	//           |----------------------------------------| 
+	_addListLine("----------------------------------------");
 	_addListLine("ED HELP PAGE v."ED_VERSION_STR);
-	_addListLine("-------------------------------------------------------------------------------");
+	_addListLine("----------------------------------------");
 	_addListLine("");
-	_addListLine("Welcome to ED, M16's text Editor! (Hit [Ctrl-q] at any time to quit)");
+	_addListLine("Welcome to ED, the Picolo Text Editor!");
+	_addListLine(" (Hit [Ctrl-q] at any time to quit)");
 	_addListLine("");
-	_addListLine("This document provides a short overview over what ED can (and can't) do.");
-	_addListLine("The EDitor is meant to provide the basic tools needed for you to be able to");
-	_addListLine("edit M16BASIC source code files directly on the M16 Virtual Computer.");
+	_addListLine("This document provides a short overview");
+	_addListLine("over what ED can (and can't) do.");
+	_addListLine("The EDitor is meant to provide the basic");
+	_addListLine("tools needed for you to be able to");
+	_addListLine("edit M16BASIC source code files directly");
+	_addListLine("on the M16 Virtual Computer.");
 	_addListLine("");
-	_addListLine("[It can be used to edit all sorts of text files, though it has some inherent");
-	_addListLine("limitations, like being limited to 80 characters per line]");
+	_addListLine("[It can be used to edit all sorts of text");
+	_addListLine("[files, though it has some inherent");
+	_addListLine("limitations, like being limited to");
+	_addListLine("80 characters per line]");
 	_addListLine("");
 
 	_addListLine("");
