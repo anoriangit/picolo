@@ -36,6 +36,7 @@
 #include "sd_card.h"
 
 // picolo
+#include "platform.h"
 #include "display.h"
 #include "conio.h"
 #include "shell.h"
@@ -90,15 +91,6 @@ void core1_scanline_callback() {
  * CORE0 code
  */
 
-uint32_t getTotalHeap(void) {
-   extern char __StackLimit, __bss_end__;
-   return &__StackLimit  - &__bss_end__;
-}
-
-uint32_t getFreeHeap(void) {
-   struct mallinfo m = mallinfo();
-   return getTotalHeap() - m.uordblks;
-}
 
 static uint64_t framecount = 0;
 static uint64_t auto_repeat_timer;
@@ -184,14 +176,14 @@ int __not_in_flash("main") main() {
     //lua_State *L = luaL_newstate();
     //luaL_openlibs(L);
 
-    printf("Free heap after init: %d\n", getFreeHeap());
+    printf("Free heap after init: %d\n", P_GetFreeHeap());
 	printf("Start rendering\n");
 
 	DisplayOpen();
 	ConOpen();
 
 	sd_init_driver();
-	Con_printf("Picolo System v1.0 %d bytes free \n", getFreeHeap());
+	Con_printf("Picolo System v%s\n%d bytes free \n", PLATFORM_VERSION_STRING, P_GetFreeHeap());
 	Con_printf("card free:%ldMB\n", SDCardTest()/(1024*1024));
 	Con_puts("ready\n");
 

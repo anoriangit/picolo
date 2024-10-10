@@ -1,21 +1,31 @@
 #pragma once
 
-#define LINE_MAX_CHARS 40
-#define MAX_LIST_LINES 512
+#define ED_LINE_MAX_LEN 128
+#define ED_LINE_MAX_CHARS 40		// on screen display length
+#define ED_MAX_LIST_LINES 512
 #define ED_MAX_FILENAME 30
 #define ED_VERSION_STR "1.0"
 
 enum ED_MODES { ED_BASICMODE };
 extern unsigned char ED_MODE;
 
+struct TextLineNode {
+	char *text;
+	struct TextLineNode *next;
+	struct TextLineNode *prev;
+};
+
 struct TextCursor {
 	int row, col;
 };
 
 struct TextBuffer {
-	char source_filename[LINE_MAX_CHARS + 1];
-	char out_lines[MAX_LIST_LINES][LINE_MAX_CHARS + 1];
-	int line_len[MAX_LIST_LINES];	// lengths of out_lines
+	struct TextLineNode *list_head;
+	struct TextLineNode *list_tail;
+	
+	char source_filename[ED_LINE_MAX_CHARS + 1];
+	char out_lines[ED_MAX_LIST_LINES][ED_LINE_MAX_CHARS + 1];
+	int line_len[ED_MAX_LIST_LINES];	// lengths of out_lines
 	struct TextCursor C;			// the actual text cursor
 	struct TextCursor SC;			// screen cursor: used to "remember" cursor position between buffer switches
 	int next_line;
@@ -40,8 +50,12 @@ extern struct TextBuffer KILLBUF;
 void e_PrintPage();
 void e_InsertLineBefore(int r);
 void e_RemoveLine(int r);
-void e_InitBuffer(struct TextBuffer*);
 int e_Edit(char* filename);
+
+// ed_buffer.c
+void e_InitBuffer(struct TextBuffer*);
+void e_BufferAppendLine(struct TextBuffer* B, char *line);
+struct TextLineNode *e_BufferFindNode(struct TextBuffer* B, int i);
 
 // ed_cursor.c
 void e_DoCursorDown();

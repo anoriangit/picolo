@@ -6,6 +6,7 @@
 #include "display.h"
 #include "conio.h"
 #include "sdcard.h"
+#include "platform.h"
 #include "ed.h"
 
 #define CMD_LINE_MAX_CHARS 128
@@ -41,11 +42,12 @@ static char name[CMD_MAX_CHARS + 1];
 
 
 static const char *s_help[] = {
-"ED [file]   - Edit [file]",
-"RUN [file]  - Compile and run [file]",
-"COMPILE (C) - Compile program",
-"DIR [path]  - List current dir or [path]",
-"CD path     - Change current directory",
+"INFO       - Display system information",
+"ED [file]  - Edit [file]",
+"RUN [file] - Compile and run [file]",
+"COMPILE    - Compile program",
+"DIR [path] - List current dir or [path]",
+"CD path    - Change current directory",
 };
 
 /******************************************************************************
@@ -56,6 +58,11 @@ static void _help_cmd(struct cmd_arg *args, int nargs) {
 	for (i = 0; i < NELEMS(s_help); i++) {
 		Con_printf("%s\n", s_help[i]);
 	}
+}
+
+static void _info_cmd(struct cmd_arg *args, int nargs) {
+	Con_printf("Picolo System v%s\n%d bytes free \n", PLATFORM_VERSION_STRING, P_GetFreeHeap());
+	Con_printf("%ldMB free sd card storage\n", SDCardTest()/(1024*1024));
 }
 
 static void _dir_cmd(struct cmd_arg *args, int nargs) {
@@ -86,6 +93,7 @@ static void _ed_cmd(struct cmd_arg *args, int nargs) {
 }
 
 static const struct command s_commands[] = {
+	{ "INFO", _info_cmd, 0, 1 },
 	{ "HELP", _help_cmd, 0, 1 },
 	{ "DIR",  _dir_cmd, 0, 1 },
 	{ "CD",   _cd_cmd, 1, 1 },

@@ -48,6 +48,7 @@ extern int Con_fputs(const char *p, FILE *stream);
 extern int Con_puts(const char* p);
 extern int Con_fprintf(FILE *stream, const char* const format, ...);
 extern int Con_printf(const char *format, ...);
+int Con_nprintf(size_t len, const char *format, ...);
 extern int Con_putc(int c, FILE *Stream);
 extern int Con_fputc(int c, FILE *Stream);
 

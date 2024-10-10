@@ -59,6 +59,8 @@ add_compile_definitions(USE_PRINTF)
 # Add executable. Default name is the project name, version 0.1
 add_executable(picolo
     main.c 
+    platform.c
+    platform.h
     besciifont.h
     display.c
     display.h
@@ -73,6 +75,7 @@ add_executable(picolo
     sdcard.c
     sdcard.h
     ed.c
+    ed_buffer.c
     ed_cursor.c
     ed_status.c
     ed_copypaste.c

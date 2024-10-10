@@ -1,11 +1,11 @@
 // ----------------------------------------------------------------------------
 // m16 text editor
 // gs july-2020
-// updated 2020-08-25 gs
+// updated 2024-10-10 gs
 // ----------------------------------------------------------------------------
 //
 // features:
-// full screen 80*28 edit with scrolling
+// full screen 40*30 edit with scroll
 // multi buffer editing (ctrl-b N)
 // status line indicating file name (and change status) and current cursor row/col
 // full cursor keys and home/end support
@@ -33,7 +33,7 @@
 unsigned char ED_MODE = ED_BASICMODE;
 
 
-//static unsigned char list_dirty[MAX_LIST_LINES];	// per line dirty flags
+//static unsigned char list_dirty[ED_MAX_LIST_LINES];	// per line dirty flags
 
 // This are global states used to signal that ED has saved a modified source or loaded a new file
 // by setting it to 1. Whoever reads and processes this should then reset it to 0
@@ -44,38 +44,35 @@ unsigned char ED_FILE_LOADED = 0;
 // this can easily be expanded to use information from the display system
 // should we ever want the editor to run in other modes than 0
 struct Win W = { 40, 29, 30, 29 };
+
+// Text Buffers
 struct TextBuffer* BUFFERS[10] = { 0,0,0,0,0,0,0,0,0,0 };
-struct TextBuffer* CB = NULL;
+struct TextBuffer* CB = NULL; // pointer to  current buffer
 int CBI = 0;
 
 struct TextBuffer KILLBUF;
 
+// Add a line to a text buffer
+static void _addListLine(struct TextBuffer* B, char* outline) {
 
-// Add a line to our array of lines (used by LIST)
-// pass in NULL in order to reset the write pointer
-// num will be > 0 for BASIC line numbers and 0 for commands and prompts
-// outline is the actual formatted output as sent to the console originally
-static void _addListLine(char* outline) {
+	e_BufferAppendLine(B, outline);
 
-	if (CB->next_line < MAX_LIST_LINES) {
-		//list_nums[CB->next_line] = num;
-		//strncpy(&list_lines[CB->next_line][0], line, LINE_MAX_CHARS + 1);
-		//if (outline) {
-			strncpy(&CB->out_lines[CB->next_line][0], outline, LINE_MAX_CHARS);
-			CB->line_len[CB->next_line] = (int)strlen(outline);
-		//}
-		CB->next_line++;
+	// obsolete soon...
+	if (CB->next_line < ED_MAX_LIST_LINES) {
+		strncpy(&B->out_lines[B->next_line][0], outline, ED_LINE_MAX_CHARS);
+		B->line_len[B->next_line] = (int)strlen(outline);
+		B->next_line++;
 	}
 }
 
+// OBSOLETE
 // pull in the source code from BASIC
 // this is very similar to the BASIC list command in bas55/cmd.c
 static int _getBasicSource() {
-
 #if 0
 	struct basic_line* p;
 	// int indent = 0;
-	char buf[LINE_MAX_CHARS + 1];
+	char buf[ED_LINE_MAX_CHARS + 1];
 	int lines = 0;
 
 	for (p = s_line_list; p != NULL; p = p->next) {
@@ -95,7 +92,7 @@ static int _getBasicSource() {
 			//	strcat(buf, " ");
 			strcat(buf, p->str);
 		}
-		_addListLine(buf);
+		_addListLine(CB, buf);
 		lines++;
 	}
 	return lines;
@@ -108,25 +105,35 @@ void e_PrintPage() {
 	//ClearDisplay(P_MemoryRead(P_MEM_SV_BGCOLOR));
     ClearTextDisplay();
 	ConSetCursorPos(0, 0);
+
+	struct TextLineNode *node = e_BufferFindNode(CB, CB->C.row);
+	for (int row = CB->C.row; (node != NULL) && (row < CB->C.row + W.n_rows); row++) {
+		// this simpy truncates long lines
+		// +1 accounts for the \n character being included in the length calculation
+		Con_nprintf(ED_LINE_MAX_CHARS+1, "%s\n", node->text);
+		node = node->next;
+	}
+	
+	/*
 	for (int row = CB->C.row; row < CB->C.row + W.n_rows && row < CB->next_line; row++) {
 		printf("%s\n", CB->out_lines[row]);
-	}
+	} */
 }
 
 
 // insert an empty new line before cursor row r
 // this does an implicit down shift (scroll) of all lines starting from line r
 void e_InsertLineBefore(int r) {
-	if (CB->next_line < MAX_LIST_LINES) {
+	if (CB->next_line < ED_MAX_LIST_LINES) {
 		// still space left: shift everything down
 		for (int source_line = CB->next_line - 1; source_line >= r; source_line--) {
-			memcpy(&CB->out_lines[source_line + 1], &CB->out_lines[source_line], LINE_MAX_CHARS);
+			memcpy(&CB->out_lines[source_line + 1], &CB->out_lines[source_line], ED_LINE_MAX_CHARS);
 			CB->line_len[source_line + 1] = CB->line_len[source_line];
-			//memcpy(&list_lines[source_line], &list_lines[source_line + 1], LINE_MAX_CHARS);
+			//memcpy(&list_lines[source_line], &list_lines[source_line + 1], ED_LINE_MAX_CHARS);
 			// also NUMS in case we should determine we actually need the list lines and the num_lines arrays
 		}
 		// init the new line by clearing it out
-		memset(&CB->out_lines[r], 0, LINE_MAX_CHARS);
+		memset(&CB->out_lines[r], 0, ED_LINE_MAX_CHARS);
 		CB->line_len[r] = 0;
 		CB->next_line++;
 	}
@@ -136,7 +143,7 @@ void e_InsertLineBefore(int r) {
 // NOTE that this does not remove the last existing line 
 void e_RemoveLine(int r) {
 	for (int source_line = r + 1; source_line < CB->next_line; source_line++) {
-		memcpy(&CB->out_lines[source_line - 1], &CB->out_lines[source_line], LINE_MAX_CHARS);
+		memcpy(&CB->out_lines[source_line - 1], &CB->out_lines[source_line], ED_LINE_MAX_CHARS);
 		CB->line_len[source_line - 1] = CB->line_len[source_line];
 	}
 	// clear the now obsolete previously last line
@@ -145,12 +152,12 @@ void e_RemoveLine(int r) {
 		// because otherwise the screen cursor would sit in a void (on a line that 
 		// does not exist.
 		CB->next_line--;		
-		memset(&CB->out_lines[CB->next_line], 0, LINE_MAX_CHARS);
+		memset(&CB->out_lines[CB->next_line], 0, ED_LINE_MAX_CHARS);
 		CB->line_len[CB->next_line] = 0;
 	}
 	else if (CB->next_line == 1) {
 		// clear line 0 but don't remove it (see above)
-		memset(&CB->out_lines[0], 0, LINE_MAX_CHARS);
+		memset(&CB->out_lines[0], 0, ED_LINE_MAX_CHARS);
 		CB->line_len[0] = 0;
 	}
 }
@@ -158,9 +165,9 @@ void e_RemoveLine(int r) {
 // Insert a character into at the current text cursor position
 // shifts the contents "under and to the right" of the cursor to the right
 static void _InsertCharacter(int c) {
-	char temp[LINE_MAX_CHARS];
+	char temp[ED_LINE_MAX_CHARS];
 	size_t linesiz = CB->line_len[CB->C.row];
-	if (linesiz < LINE_MAX_CHARS) {
+	if (linesiz < ED_LINE_MAX_CHARS) {
 		// there is still some space left 
 		size_t shift_size = linesiz - CB->C.col;					// count of characters to shift 
 		if (shift_size) {
@@ -183,7 +190,7 @@ static void _InsertCharacter(int c) {
 				PutCharacter(CB->out_lines[CB->C.row][i], ConGetCursorRow(), i);
 			}
 		}
-		if(CB->C.col < LINE_MAX_CHARS - 1)	// Make sure we don't move the cursor past column 80
+		if(CB->C.col < ED_LINE_MAX_CHARS - 1)	// Make sure we don't move the cursor past column 80
 			CB->C.col++;
 
 		CB->line_len[CB->C.row]++;
@@ -230,7 +237,7 @@ static unsigned char _HandleBackspace() {
 		if (CB->C.row > 0) {
 			size_t prev_len = CB->line_len[CB->C.row - 1];
 			// Note that we don't allow line splits: either it all fits or we won't perform the process
-			if (prev_len + len <= LINE_MAX_CHARS) {
+			if (prev_len + len <= ED_LINE_MAX_CHARS) {
 				memcpy(&CB->out_lines[CB->C.row - 1][prev_len], &CB->out_lines[CB->C.row], len);
 				CB->line_len[CB->C.row - 1] += (int) len;
 				e_RemoveLine(CB->C.row--);
@@ -297,7 +304,7 @@ static unsigned char _HandleDel() {
 		// Note that we don't allow line splits: either it all fits or we won't perform the process!
 		if (CB->C.row < CB->next_line - 1) {
 			int next_len = CB->line_len[CB->C.row + 1];
-			if (next_len + len <= LINE_MAX_CHARS) {
+			if (next_len + len <= ED_LINE_MAX_CHARS) {
 				memcpy(&CB->out_lines[CB->C.row][len], &CB->out_lines[CB->C.row+1], next_len);
 				CB->line_len[CB->C.row] += next_len;
 				e_RemoveLine(CB->C.row + 1);
@@ -341,7 +348,7 @@ static void _handleNewLine() {
 
 	// this will need space for a new line: if there is none we need to abort
 	// should probably generate some kind of error in the status line here
-	if (!(CB->next_line < MAX_LIST_LINES))
+	if (!(CB->next_line < ED_MAX_LIST_LINES))
 		return;
 
 	int dcr, dcc;
@@ -401,7 +408,7 @@ static void _handleNewLine() {
 
 
 		CB->line_len[CB->C.row - 1] -= CB->line_len[CB->C.row];			// correct old le´n
-		memset(&CB->out_lines[CB->C.row - 1][CB->line_len[CB->C.row-1]], 0, LINE_MAX_CHARS - CB->line_len[CB->C.row - 1]);	// null out reminder
+		memset(&CB->out_lines[CB->C.row - 1][CB->line_len[CB->C.row-1]], 0, ED_LINE_MAX_CHARS - CB->line_len[CB->C.row - 1]);	// null out reminder
 		ConCursorUp();									// need to correct display of remainder line
 		ConClearCursorRow();							// clear
 		puts((const char*)&CB->out_lines[CB->C.row - 1]);					// and re-output
@@ -544,17 +551,17 @@ static int _doSave() {
 // Load a basic source and add the lines to the m16basic core
 // returns number of lines loaded or negative error code
 static int _doLoad(char *filename) {
-	char buf[LINE_MAX_CHARS+3];			// leave space for trailing \r and/or \n + 0
+	char buf[ED_LINE_MAX_CHARS+3];			// leave space for trailing \r and/or \n + 0
 	FILE* fp = fopen(filename, "r");
 	if (fp) {
 		int lines = 0;
 		// NOTE that fgets() reads a trailing 0x0D+0x0A (cr&lf) as a single LF!
 		// (at least the visual c std lib does)
-		while (fgets(buf, LINE_MAX_CHARS+2, fp)) {
+		while (fgets(buf, ED_LINE_MAX_CHARS+2, fp)) {
 			size_t len = strlen(buf);
 			if (buf[len - 1] == 10) buf[len - 1] = 0;	// remove any trailing newline characters
 			lines++;
-			_addListLine(buf);
+			_addListLine(CB, buf);
 		}
 		fclose(fp);
 		return lines;
@@ -563,28 +570,8 @@ static int _doLoad(char *filename) {
 }
 
 // ----------------------------------------------------------------------------
-// Buffers
+// Buffer handling
 // ----------------------------------------------------------------------------
-
-// Initialize a TextBuffer
-// Does not allocate the memory for the buffer!
-void e_InitBuffer(struct TextBuffer* b) {
-	b->C.col = 0;
-	b->C.row = 0;
-	b->SC.col = 0;
-	b->SC.row = 0;
-	
-	b->b_dirty = 0;
-	b->next_line = 0;
-
-	b->source_filename[0] = 0;
-
-	size_t size = sizeof(b->line_len);
-	memset(b->line_len, 0, size);
-
-	size = sizeof(b->out_lines);
-	memset(b->out_lines, 0, size);
-}
 
 static void _setBufferFilename(struct TextBuffer* b, char* fname) {
 	strncpy(b->source_filename, fname, sizeof(b->source_filename) - 1);
@@ -670,116 +657,116 @@ static void _DoBufferSwitch() {
 static void _createHelpPage() {
 	char line[80];
 	
-	//           |----------------------------------------| 
-	_addListLine("----------------------------------------");
-	_addListLine("ED HELP PAGE v."ED_VERSION_STR);
-	_addListLine("----------------------------------------");
-	_addListLine("");
-	_addListLine("Welcome to ED, the Picolo Text Editor!");
-	_addListLine(" (Hit [Ctrl-q] at any time to quit)");
-	_addListLine("");
-	_addListLine("This document provides a short overview");
-	_addListLine("over what ED can (and can't) do.");
-	_addListLine("The EDitor is meant to provide the basic");
-	_addListLine("tools needed for you to be able to");
-	_addListLine("edit M16BASIC source code files directly");
-	_addListLine("on the M16 Virtual Computer.");
-	_addListLine("");
-	_addListLine("[It can be used to edit all sorts of text");
-	_addListLine("[files, though it has some inherent");
-	_addListLine("limitations, like being limited to");
-	_addListLine("80 characters per line]");
-	_addListLine("");
+	//               |----------------------------------------| 
+	_addListLine(CB, "----------------------------------------");
+	_addListLine(CB, "ED HELP PAGE v."ED_VERSION_STR);
+	_addListLine(CB, "----------------------------------------");
+	_addListLine(CB, "");
+	_addListLine(CB, "Welcome to ED, the Picolo Text Editor!");
+	_addListLine(CB, " (Hit [Ctrl-q] at any time to quit)");
+	_addListLine(CB, "");
+	_addListLine(CB, "This document provides a short overview");
+	_addListLine(CB, "over what ED can (and can't) do.");
+	_addListLine(CB, "The EDitor is meant to provide the basic");
+	_addListLine(CB, "tools needed for you to be able to");
+	_addListLine(CB, "edit M16BASIC source code files directly");
+	_addListLine(CB, "on the M16 Virtual Computer.");
+	_addListLine(CB, "");
+	_addListLine(CB, "[It can be used to edit all sorts of text");
+	_addListLine(CB, "[files, though it has some inherent");
+	_addListLine(CB, "limitations, like being limited to");
+	_addListLine(CB, "80 characters per line]");
+	_addListLine(CB, "");
 
-	_addListLine("");
-	_addListLine("TEXT ENTRY");
-	_addListLine("");
-	_addListLine("Just happily type away! All characters you enter will be inserted at");
-	_addListLine("the current cursor position. Please note that there is no automatic");
-	_addListLine("line wrap.");
-	_addListLine("");
-	_addListLine("[There currently is no overwrite mode, ED only supports insert mode]");
-	_addListLine("");
+	_addListLine(CB, "");
+	_addListLine(CB, "TEXT ENTRY");
+	_addListLine(CB, "");
+	_addListLine(CB, "Just happily type away! All characters you enter will be inserted at");
+	_addListLine(CB, "the current cursor position. Please note that there is no automatic");
+	_addListLine(CB, "line wrap.");
+	_addListLine(CB, "");
+	_addListLine(CB, "[There currently is no overwrite mode, ED only supports insert mode]");
+	_addListLine(CB, "");
 
-	_addListLine("");
-	_addListLine("CURSOR MOVEMENT");
-	_addListLine("");
+	_addListLine(CB, "");
+	_addListLine(CB, "CURSOR MOVEMENT");
+	_addListLine(CB, "");
 	sprintf(line, "You can move the text cursor using the keyboard cursor [%c%c%c%c] keys.", 129, 130, 131, 132);
-	_addListLine(line);
-	_addListLine("The [Home] and [End] keys quickly jump to thestart or end of the");
-	_addListLine("current line while [PageUp] and [PageDown] can be used");
-	_addListLine("to quickly scroll through a document, page by page.");
-	_addListLine("");
+	_addListLine(CB, line);
+	_addListLine(CB, "The [Home] and [End] keys quickly jump to thestart or end of the");
+	_addListLine(CB, "current line while [PageUp] and [PageDown] can be used");
+	_addListLine(CB, "to quickly scroll through a document, page by page.");
+	_addListLine(CB, "");
 
-	_addListLine("");
-	_addListLine("DELETING TEXT");
-	_addListLine("");
-	_addListLine("Use the [Backspace] key to delete characters left of the cursor and");
-	_addListLine("the [Del] key to delete characters under the cursor.");
-	_addListLine("You can use [Ctrl-k] (or [Ctrl-x] to delete the entire current line.");
-	_addListLine("");
-	_addListLine("[Most of the more powerful functionalities of ED are invoked by holding the");
-	_addListLine("control key and pressing an additional key while doing so. The above");
-	_addListLine("line \"kill\" function also copies the line into the internal clipboard");
-	_addListLine("by the way, from where it can be reinserted somewhere else later on]");
-	_addListLine("");
+	_addListLine(CB, "");
+	_addListLine(CB, "DELETING TEXT");
+	_addListLine(CB, "");
+	_addListLine(CB, "Use the [Backspace] key to delete characters left of the cursor and");
+	_addListLine(CB, "the [Del] key to delete characters under the cursor.");
+	_addListLine(CB, "You can use [Ctrl-k] (or [Ctrl-x] to delete the entire current line.");
+	_addListLine(CB, "");
+	_addListLine(CB, "[Most of the more powerful functionalities of ED are invoked by holding the");
+	_addListLine(CB, "control key and pressing an additional key while doing so. The above");
+	_addListLine(CB, "line \"kill\" function also copies the line into the internal clipboard");
+	_addListLine(CB, "by the way, from where it can be reinserted somewhere else later on]");
+	_addListLine(CB, "");
 
-	_addListLine("");
-	_addListLine("COPY & PASTE");
-	_addListLine("");
-	_addListLine("[Ctrl-c] copies the current line to the clip board while [Ctrl-x] or");
-	_addListLine("or [Ctrl-k] also delete the entire line. You can reinsert the copied ");
-	_addListLine("line at the current cursor row using [Ctrl-v] or [Ctrl-y].");
-	_addListLine("Multiple lines can be copied at once by using the \"MARK\":");
-	_addListLine("press [Ctrl-m] to set the mark at the current line and subsequent");
-	_addListLine("copy or cut commands will work on all lines from the mark up to ");
-	_addListLine("and including the cursor.");
-	_addListLine("");
+	_addListLine(CB, "");
+	_addListLine(CB, "COPY & PASTE");
+	_addListLine(CB, "");
+	_addListLine(CB, "[Ctrl-c] copies the current line to the clip board while [Ctrl-x] or");
+	_addListLine(CB, "or [Ctrl-k] also delete the entire line. You can reinsert the copied ");
+	_addListLine(CB, "line at the current cursor row using [Ctrl-v] or [Ctrl-y].");
+	_addListLine(CB, "Multiple lines can be copied at once by using the \"MARK\":");
+	_addListLine(CB, "press [Ctrl-m] to set the mark at the current line and subsequent");
+	_addListLine(CB, "copy or cut commands will work on all lines from the mark up to ");
+	_addListLine(CB, "and including the cursor.");
+	_addListLine(CB, "");
 
-	_addListLine("");
-	_addListLine("LOAD, SAVE & QUIT");
-	_addListLine("");
-	_addListLine("You can load a file into the current buffer (more on buffers later)");
-	_addListLine("by hitting [Ctrl-l] and save the buffer with [Ctrl-s].");
-	_addListLine("Quit ED by simply hitting [Ctrl-q]. If the current buffer was modified");
-	_addListLine("you will be prompted as to whether you want it to be saved first.");
-	_addListLine("");
-	_addListLine("[BASIC and buffer 0: buffer 0 is special in that it automatically");
-	_addListLine("loads the current BASIC source code directly from the M16BASIC core");
-	_addListLine("when ED is started without a filename parameter and a valid BASIC");
-	_addListLine("source is available. If you modify this file and save it");
-	_addListLine("directly using [Ctrl-s] or indirectly when quitting ED, the");
-	_addListLine("M16 console will attempt to automatically reload it into");
-	_addListLine("BASIC (which might fail if there are any syntax errors)]");
-	_addListLine("");
+	_addListLine(CB, "");
+	_addListLine(CB, "LOAD, SAVE & QUIT");
+	_addListLine(CB, "");
+	_addListLine(CB, "You can load a file into the current buffer (more on buffers later)");
+	_addListLine(CB, "by hitting [Ctrl-l] and save the buffer with [Ctrl-s].");
+	_addListLine(CB, "Quit ED by simply hitting [Ctrl-q]. If the current buffer was modified");
+	_addListLine(CB, "you will be prompted as to whether you want it to be saved first.");
+	_addListLine(CB, "");
+	_addListLine(CB, "[BASIC and buffer 0: buffer 0 is special in that it automatically");
+	_addListLine(CB, "loads the current BASIC source code directly from the M16BASIC core");
+	_addListLine(CB, "when ED is started without a filename parameter and a valid BASIC");
+	_addListLine(CB, "source is available. If you modify this file and save it");
+	_addListLine(CB, "directly using [Ctrl-s] or indirectly when quitting ED, the");
+	_addListLine(CB, "M16 console will attempt to automatically reload it into");
+	_addListLine(CB, "BASIC (which might fail if there are any syntax errors)]");
+	_addListLine(CB, "");
 
-	_addListLine("");
-	_addListLine("BUFFERS");
-	_addListLine("");
-	_addListLine("ED provides 10 buffers for you to work with it. You can load and");
-	_addListLine("save files into these buffers, copy and paste text lines between them");
-	_addListLine("and their content will also persist between invocations of ED,");
-	_addListLine("provided that the M16 virtual computer is not restarted.");
-	_addListLine("To change the current buffer simply hit [Ctrl-b] followed by a digit");
-	_addListLine("key (0-9) that selects the buffer you want to switch to.");
-	_addListLine("");
+	_addListLine(CB, "");
+	_addListLine(CB, "BUFFERS");
+	_addListLine(CB, "");
+	_addListLine(CB, "ED provides 10 buffers for you to work with it. You can load and");
+	_addListLine(CB, "save files into these buffers, copy and paste text lines between them");
+	_addListLine(CB, "and their content will also persist between invocations of ED,");
+	_addListLine(CB, "provided that the M16 virtual computer is not restarted.");
+	_addListLine(CB, "To change the current buffer simply hit [Ctrl-b] followed by a digit");
+	_addListLine(CB, "key (0-9) that selects the buffer you want to switch to.");
+	_addListLine(CB, "");
 
-	_addListLine("");
-	_addListLine("THE STATUS LINE");
-	_addListLine("");
-	_addListLine("The bottom line of the ED screen forms the status line. It provides");
-	_addListLine("the following information (from left to right):");
-	_addListLine("- [N]: the buffer indicator.");
-	_addListLine("- filename.ext: buffer filename and extention (if set).");
-	_addListLine("- *: the buffer dirty indicator (if the buffer was modified).");
-	_addListLine("- l:x/y: the line indicator: the cursor is on line x of y lines.");
-	_addListLine("- c:z: the column indicator: this is the column the cursor is on.");
-	_addListLine("To the right of this information, which is always present, ED displays");
-	_addListLine("things like filename prompts and various messages.");
-	_addListLine("");
-	_addListLine("[Feel free to use this text as a sandbox for trying out ED. No worries!");
-	_addListLine("You can't damage the help file. Its not actually a file but gets");
-	_addListLine("generated from code everytime ED is started]");
+	_addListLine(CB, "");
+	_addListLine(CB, "THE STATUS LINE");
+	_addListLine(CB, "");
+	_addListLine(CB, "The bottom line of the ED screen forms the status line. It provides");
+	_addListLine(CB, "the following information (from left to right):");
+	_addListLine(CB, "- [N]: the buffer indicator.");
+	_addListLine(CB, "- filename.ext: buffer filename and extention (if set).");
+	_addListLine(CB, "- *: the buffer dirty indicator (if the buffer was modified).");
+	_addListLine(CB, "- l:x/y: the line indicator: the cursor is on line x of y lines.");
+	_addListLine(CB, "- c:z: the column indicator: this is the column the cursor is on.");
+	_addListLine(CB, "To the right of this information, which is always present, ED displays");
+	_addListLine(CB, "things like filename prompts and various messages.");
+	_addListLine(CB, "");
+	_addListLine(CB, "[Feel free to use this text as a sandbox for trying out ED. No worries!");
+	_addListLine(CB, "You can't damage the help file. Its not actually a file but gets");
+	_addListLine(CB, "generated from code everytime ED is started]");
 
 
 }
@@ -955,8 +942,8 @@ int e_Edit(char* filename) {
 			break;
 		case M16_CON_END:
 			CB->C.col = CB->line_len[CB->C.row];
-			if (CB->C.col >= LINE_MAX_CHARS)		// make sure we don't step the cursor past column 80
-				CB->C.col = LINE_MAX_CHARS - 1;
+			if (CB->C.col >= ED_LINE_MAX_CHARS)		// make sure we don't step the cursor past column 80
+				CB->C.col = ED_LINE_MAX_CHARS - 1;
 			ConSetCursorPos(ConGetCursorRow(), CB->C.col);
 			break;
 		case M16_CON_CTRL_X:

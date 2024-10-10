@@ -226,6 +226,16 @@ int Con_fprintf(FILE *stream, const char* const format, ...) {
 	return err;
 }
 
+// length restricted printf
+int Con_nprintf(size_t len, const char *format, ...) {
+	va_list argp;
+	va_start(argp, format);
+	int err = vsnprintf(buffer, (len <= BUFFER_SIZE) ? len : BUFFER_SIZE, format, argp);
+	va_end(argp);
+	Con_fputs(buffer, 0);
+	return err;
+}
+
 int Con_printf(const char *format, ...) {
 	va_list argp;
 	va_start(argp, format);
