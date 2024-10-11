@@ -19,10 +19,17 @@ struct TextCursor {
 	int row, col;
 };
 
+// new, list based, text cursor
+struct TextPos {
+	struct TextLineNode *node;
+	char *pos;
+};
+
 struct TextBuffer {
 	struct TextLineNode *list_head;
 	struct TextLineNode *list_tail;
-	
+	struct TextPos pos;
+
 	char source_filename[ED_LINE_MAX_CHARS + 1];
 	char out_lines[ED_MAX_LIST_LINES][ED_LINE_MAX_CHARS + 1];
 	int line_len[ED_MAX_LIST_LINES];	// lengths of out_lines
@@ -52,10 +59,19 @@ void e_InsertLineBefore(int r);
 void e_RemoveLine(int r);
 int e_Edit(char* filename);
 
+// ed_edit.c
+void e_InsertLineBefore(int r);
+void e_RemoveLine(int r);
+unsigned char e_HandleBackspace();
+void e_InsertCharacter(int c);
+unsigned char e_HandleDel();
+void e_handleNewLine();
+
 // ed_buffer.c
 void e_InitBuffer(struct TextBuffer*);
 void e_BufferAppendLine(struct TextBuffer* B, char *line);
 struct TextLineNode *e_BufferFindNode(struct TextBuffer* B, int i);
+struct TextPos e_BufferCursor2Pos(struct TextBuffer *B, struct TextCursor cursor);
 
 // ed_cursor.c
 void e_DoCursorDown();

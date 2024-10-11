@@ -75,6 +75,7 @@ add_executable(picolo
     sdcard.c
     sdcard.h
     ed.c
+    ed_edit.c
     ed_buffer.c
     ed_cursor.c
     ed_status.c

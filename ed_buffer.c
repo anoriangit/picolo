@@ -12,7 +12,7 @@ static void _panic(char *msg);
 
 // Find a node in the list by index
 // returns the node or NULL
-struct TextLineNode *e_BufferFindNode(struct TextBuffer* B, int i) {
+struct TextLineNode *e_BufferFindNode(struct TextBuffer *B, int i) {
     int count = 0;
     struct TextLineNode *node = B->list_head;
     while(node) {
@@ -22,6 +22,16 @@ struct TextLineNode *e_BufferFindNode(struct TextBuffer* B, int i) {
         node = node->next;
     }
     return node;
+}
+
+struct TextPos e_BufferCursor2Pos(struct TextBuffer *B, struct TextCursor cursor) {
+    struct TextPos pos = {0};
+    struct TextLineNode *node = e_BufferFindNode(B, cursor.row);
+    if(node) {
+        pos.node = node;
+        pos.pos = node->text + cursor.col;
+    }
+    return pos;
 }
 
 // Does all required memory allocations to create a TextLineNode
@@ -50,13 +60,17 @@ void e_BufferAppendLine(struct TextBuffer* B, char *line) {
 // Initialize a TextBuffer
 // Does not allocate the memory for the buffer!
 void e_InitBuffer(struct TextBuffer* b) {
+
+    // new list based stuff
+    b->list_head = NULL;
+    b->list_tail = NULL;
+    b->pos.node = NULL;
+    b->pos.pos = NULL;
+
 	b->C.col = 0;
 	b->C.row = 0;
 	b->SC.col = 0;
 	b->SC.row = 0;
-
-    b->list_head = NULL;
-    b->list_tail = NULL;
     
 	b->b_dirty = 0;
 	b->next_line = 0;
