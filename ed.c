@@ -24,6 +24,7 @@
 #include <signal.h>
 #include <assert.h>
 #include <malloc.h>
+#include <pico/stdlib.h>	// for panic()
 
 #define CONIO_STDIO_OVERRIDES
 #include "display.h"
@@ -31,7 +32,6 @@
 #include "ed.h"
 
 unsigned char ED_MODE = ED_BASICMODE;
-
 
 //static unsigned char list_dirty[ED_MAX_LIST_LINES];	// per line dirty flags
 
@@ -51,7 +51,7 @@ struct TextBuffer* CB = NULL; // pointer to  current buffer
 int CBI = 0;
 
 struct TextBuffer KILLBUF;
-
+  
 // Add a line to a text buffer
 static void _addListLine(struct TextBuffer* B, char* outline) {
 
@@ -111,7 +111,7 @@ void e_PrintPage() {
 	while(node && line_count < W.n_rows) {
 		// this simpy truncates long lines
 		// +1 accounts for the \n character being included in the length calculation
-		Con_nprintf(ED_LINE_MAX_CHARS+1, "%s\n", node->text);
+		Con_nprintf(ED_LINE_MAX_CHARS+1, "%s\n", node->line.text);
 		node = node->next;
 		line_count++;
 	}
@@ -325,24 +325,23 @@ static void _DoBufferSwitch() {
 			CB = BUFFERS[k];
 
 			// restore the display
-			// Note: currently not full functional as we move to the new list based system
-			// right now we simply init the text cursor to point at the first line (if any)
-			// and display from there
 
-			CB->pos = e_BufferCursor2Pos(CB, CB->SC);
-			//CB->pos.node = CB->list_head;
-			//CB->pos.pos = CB->pos.node->text;
+			struct TextPos oldpos = e_BufferCursor2Pos(CB, CB->SC);
+			if(!oldpos.node) panic("cursor node not found, row:%d col:%d", CB->SC.row, CB->SC.col);
+			if(CB->SC.row > 0) {
+				// screen cursor not on top row: need to move the buffer pos up (back)
+				// so that e_PrintPage() starts at the correct line
+				int count = CB->SC.row;
+				while(CB->pos.node->prev && count > 0) {
+					CB->pos.node = CB->pos.node->prev; 
+					count--;
+				} 
+			}
+			
 			e_PrintPage();
-			//CB->C.row = CB->SC.row; CB->C.col = CB->SC.col; // not needed anymore soon'ish...
 			ConSetCursorPos(CB->SC.row, CB->SC.col);	// restore the buffer's screen cursor position
+			CB->pos = oldpos;
 
-			/*
-			int tmp = CB->C.row;
-			CB->C.row = CB->C.row - CB->SC.row;	// temporarily move up so that the text cursor is at the top of the screen
-			e_PrintPage();						// only cares about row, ignores col
-			CB->C.row = tmp;					// restore text cursor row
-			ConSetCursorPos(CB->SC.row, CB->SC.col);		// and restore the new buffer's screen cursor position
-			*/
 		}
 		else if (k != CBI) {
 			// initialize a new buffer
@@ -352,9 +351,6 @@ static void _DoBufferSwitch() {
 			BUFFERS[k] = CB;
 			e_InitBuffer(CB);
 			CB->next_line = 1;		// new buffer will implicitly have one empty line
-
-			CB->pos.node = CB->list_head;
-			CB->pos.pos = CB->pos.node->text;
 
 			e_PrintPage();
 			ConSetCursorPos(0, 0);

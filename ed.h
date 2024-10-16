@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 #define ED_LINE_MAX_LEN 128
 #define ED_LINE_MAX_CHARS 40		// on screen display length
 #define ED_MAX_LIST_LINES 512
@@ -9,8 +11,13 @@
 enum ED_MODES { ED_BASICMODE };
 extern unsigned char ED_MODE;
 
-struct TextLineNode {
+struct TextLine {
+	uint16_t len;
 	char *text;
+};
+
+struct TextLineNode {
+	struct TextLine line;
 	struct TextLineNode *next;
 	struct TextLineNode *prev;
 };
@@ -22,7 +29,7 @@ struct TextCursor {
 // new, list based, text cursor
 struct TextPos {
 	struct TextLineNode *node;
-	char *pos;
+	uint16_t pos;
 };
 
 struct TextBuffer {

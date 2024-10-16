@@ -24,7 +24,10 @@
 // but will probably need to be ammended at some point
 void e_DoCursorDown() {
 
-	if (CB->C.row < CB->next_line - 1) {
+	//if (CB->C.row < CB->next_line - 1) {
+	if (CB->pos.node->next != NULL) {
+		CB->pos.node = CB->pos.node->next;
+		
 		CB->C.row++;
 		int dcr, dcc;
 		ConGetCursorPos(&dcr, &dcc);	// current display cursor row&column
