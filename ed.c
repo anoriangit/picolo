@@ -326,8 +326,9 @@ static void _DoBufferSwitch() {
 
 			// restore the display
 
-			struct TextPos oldpos = e_BufferCursor2Pos(CB, CB->SC);
-			if(!oldpos.node) panic("cursor node not found, row:%d col:%d", CB->SC.row, CB->SC.col);
+			//struct TextPos oldpos = e_BufferCursor2Pos(CB, CB->SC);
+			//if(!oldpos.node) panic("cursor node not found, row:%d col:%d", CB->SC.row, CB->SC.col);
+			struct TextPos oldpos = CB->pos;
 			if(CB->SC.row > 0) {
 				// screen cursor not on top row: need to move the buffer pos up (back)
 				// so that e_PrintPage() starts at the correct line

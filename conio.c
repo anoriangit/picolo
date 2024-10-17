@@ -227,6 +227,7 @@ int Con_fprintf(FILE *stream, const char* const format, ...) {
 }
 
 // length restricted printf
+// length passed in will additionaly be limited to BUFFER_SIZE
 int Con_nprintf(size_t len, const char *format, ...) {
 	va_list argp;
 	va_start(argp, format);

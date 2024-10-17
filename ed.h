@@ -22,7 +22,7 @@ struct TextLineNode {
 	struct TextLineNode *prev;
 };
 
-struct TextCursor {
+struct ScreenCursor {
 	int row, col;
 };
 
@@ -30,6 +30,7 @@ struct TextCursor {
 struct TextPos {
 	struct TextLineNode *node;
 	uint16_t pos;
+	uint16_t lineno;
 };
 
 struct TextBuffer {
@@ -40,8 +41,8 @@ struct TextBuffer {
 	char source_filename[ED_LINE_MAX_CHARS + 1];
 	char out_lines[ED_MAX_LIST_LINES][ED_LINE_MAX_CHARS + 1];
 	int line_len[ED_MAX_LIST_LINES];	// lengths of out_lines
-	struct TextCursor C;			// the actual text cursor
-	struct TextCursor SC;			// screen cursor: used to "remember" cursor position between buffer switches
+	struct ScreenCursor C;			// the actual text cursor
+	struct ScreenCursor SC;			// screen cursor: used to "remember" cursor position between buffer switches
 	int next_line;
 	int line_mark;
 	unsigned char b_dirty;
@@ -78,7 +79,7 @@ void e_handleNewLine();
 void e_InitBuffer(struct TextBuffer*);
 void e_BufferAppendLine(struct TextBuffer* B, char *line);
 struct TextLineNode *e_BufferFindNode(struct TextBuffer* B, int i);
-struct TextPos e_BufferCursor2Pos(struct TextBuffer *B, struct TextCursor cursor);
+struct TextPos e_BufferCursor2Pos(struct TextBuffer *B, struct ScreenCursor cursor);
 
 // ed_cursor.c
 void e_DoCursorDown();

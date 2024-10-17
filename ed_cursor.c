@@ -4,7 +4,7 @@
 //
 // ed-cursor.c  cursor management (display and text cursor)
 // gs july-2020
-// updated 2020-08-28 gs
+// updated 2024-10-17 gs
 // ----------------------------------------------------------------------------
 
 #include <stdlib.h>
@@ -17,53 +17,57 @@
 #include "ed.h"
 
 
-// TEXT CURSOR movment
-// NOTE: all of this assumes that the text cursor C's column will always be inside the display limits
-// i.e this implies a fixed maximum line length that is smaller or equal to the display width
-// This is a convenience hack on the part of the coder (because it makes stuff so much easier :D)
-// but will probably need to be ammended at some point
+// ---------------------------------------
+// ED TEXT CURSOR movement
+// ---------------------------------------
+
+
+// NOTE: rewrite for list based version of ED complete!
 void e_DoCursorDown() {
 
-	//if (CB->C.row < CB->next_line - 1) {
 	if (CB->pos.node->next != NULL) {
 		CB->pos.node = CB->pos.node->next;
+		CB->pos.lineno++;
 		
-		CB->C.row++;
 		int dcr, dcc;
 		ConGetCursorPos(&dcr, &dcc);	// current display cursor row&column
+		
 		if (dcr == W.n_rows - 1) {
-			// we need to scroll
+			// we need to scroll UP the display
 			CharacterDisplayScrollUpRow(dcr + 1);
 			ConClearCursorRow();
 			ConSetCursorPos(dcr, 0);			// make sure we are on column 0
-			printf("%s", CB->out_lines[CB->C.row]);
+			Con_nprintf(ED_LINE_MAX_CHARS, "%s", CB->pos.node->line.text);
 			ConSetCursorPos(dcr, dcc);			// move back to actual user column
 		}
 		else {
-			// just a plain cursor move down
+			// just a plain screen cursor move down
 			ConCursorDown();
 			dcr++;
 		}
 		// finally: correct cursor column if we are to the right of the line end now
-		if (CB->C.col > CB->line_len[CB->C.row]) {
-			CB->C.col = CB->line_len[CB->C.row];
-			ConSetCursorPos(dcr, CB->C.col);	// cant't use CB->C.row as that might be outside the actual display area
+		if(dcc > CB->pos.node->line.len) {
+			CB->pos.pos = CB->pos.node->line.len;
+			ConSetCursorPos(dcr, CB->pos.pos);
 		}
 	}
 }
 
-// returns new text cursor row
+// NOTE: rewrite for list based version of ED complete!
 void e_DoCursorUp() {
-	if (CB->C.row > 0) {
-		CB->C.row--;
+
+	if (CB->pos.node->prev != NULL) {
+		CB->pos.node = CB->pos.node->prev;
+		CB->pos.lineno--;
+
 		int dcr, dcc;
 		ConGetCursorPos(&dcr, &dcc);	// current display cursor row&column
 		if (dcr == 0) {
-			// we need to scroll
+			// we need to scroll the display DOWN
 			CharacterDisplayScrollDownRow(W.n_rows - 1);
 			ConClearCursorRow();
 			ConSetCursorPos(dcr, 0);			// make sure we are on column 0
-			printf("%s", CB->out_lines[CB->C.row]);
+			Con_nprintf(ED_LINE_MAX_CHARS, "%s", CB->pos.node->line.text);
 			ConSetCursorPos(dcr, dcc);
 		}
 		else {
@@ -72,9 +76,9 @@ void e_DoCursorUp() {
 			dcr--;
 		}
 		// finally: correct cursor column if we are to the right of the line end now
-		if (CB->C.col > CB->line_len[CB->C.row]) {
-			CB->C.col = CB->line_len[CB->C.row];
-			ConSetCursorPos(dcr, CB->C.col);	// cant't use CB->C.row as that might be outside the actual display area
+		if(dcc > CB->pos.node->line.len) {
+			CB->pos.pos = CB->pos.node->line.len;
+			ConSetCursorPos(dcr, CB->pos.pos);
 		}
 	}
 }

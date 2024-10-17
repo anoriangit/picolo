@@ -86,8 +86,10 @@ void e_PrintStatusLine() {
 	ConGetCursorPos(&dcr, &dcc);
 	ConSetCursorPos(W.status_row, 0);
 	
+	// Shouldn't this actually only be required once at starrtup?
     for (int i = 0; i < W.n_cols; i++) {
-        // M16 was printing a line using graphics chars from tha Atari ST font here
+        // M16 was printing a divider line using graphics chars from the Atari ST font here
+		// we simply print the entire status line in iverse 
     	//putc('-', stdout);			// 19 is a little off center (down), 18 would be centered
         SetAttribute(D_ATTR_INVERSE, W.status_row, i);
     }
@@ -101,7 +103,11 @@ void e_PrintStatusLine() {
 	}
 
 	char* fname = _MassageFilename(CB->source_filename);
-	snprintf(status_text, ED_LINE_MAX_CHARS, "[%d]%s%c l:%d/%d c:%d  %s", CBI, fname, (CB->b_dirty ? '*' : ' '), CB->C.row + 1, CB->next_line, CB->C.col + 1, extra_status_text);
+	
+	snprintf(status_text, ED_LINE_MAX_CHARS, "[%d]%s%c l:%d/%d c:%d  %s", 
+		CBI, fname, (CB->b_dirty ? '*' : ' '), CB->pos.lineno, CB->next_line, 
+		CB->C.col + 1, extra_status_text);
+
 	puts(status_text);
 	ConSetCursorPos(dcr, dcc);
 }

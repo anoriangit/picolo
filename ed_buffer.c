@@ -25,7 +25,8 @@ struct TextLineNode *e_BufferFindNode(struct TextBuffer *B, int i) {
     return node;
 }
 
-struct TextPos e_BufferCursor2Pos(struct TextBuffer *B, struct TextCursor cursor) {
+// this function is crap: don't use
+struct TextPos e_BufferCursor2Pos(struct TextBuffer *B, struct ScreenCursor cursor) {
     struct TextPos pos = {0};
     struct TextLineNode *node = e_BufferFindNode(B, cursor.row);
     if(node) {
@@ -49,11 +50,12 @@ void e_BufferAppendLine(struct TextBuffer* B, char *line) {
 		// insert the incoming text line into it
 		node->line.text = buf;
 		node->line.len = strlen(buf);
+		B->list_tail = NULL; 	// invalidate the pointer to the dummy 
 	} else {
 		node = _newTextLineNode(buf);
 	}
 
-	
+	// list link up
 	node->prev = B->list_tail;
 	if(B->list_tail == NULL) {
 		// list is emtpty
@@ -61,7 +63,7 @@ void e_BufferAppendLine(struct TextBuffer* B, char *line) {
 	} else {
 		// link up to the end of the list
 		B->list_tail->next = node;
-           B->list_tail = node;
+        B->list_tail = node;
 	}
     B->b_dirty = 1;
 }
@@ -70,12 +72,12 @@ void e_BufferAppendLine(struct TextBuffer* B, char *line) {
 // Does not allocate the memory for the buffer!
 void e_InitBuffer(struct TextBuffer* b) {
 
-    // new list based stuff: each buffer starts with on empty dummy line
+    // new list based stuff: each buffer starts with one empty dummy line
     b->list_head = _newTextLineNode(NULL);
     b->list_tail = b->list_head;
     b->pos.node = b->list_head;
     b->pos.pos = b->list_head->line.len;
-
+	b->pos.lineno = 1;
 
 	b->C.col = 0;
 	b->C.row = 0;
