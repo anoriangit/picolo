@@ -84,7 +84,11 @@ void e_DoCursorUp() {
 }
 
 void e_DoCursorRight() {
-	if (CB->C.col <= CB->line_len[CB->C.row] && !(CB->C.row == CB->next_line - 1 && CB->C.col == CB->line_len[CB->C.row])) {
+	// cursor to the right if we are not at end of line of the last line
+	// auto skips to next line
+	if (CB->C.col <= CB->line_len[CB->C.row] &&
+		!(CB->C.row == CB->next_line - 1 && CB->C.col == CB->line_len[CB->C.row])) {
+		
 		CB->C.col++;
 		ConCursorRight();
 		// finally: correct cursor row if we are to the right of the line end now
