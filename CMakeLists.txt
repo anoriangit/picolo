@@ -86,6 +86,14 @@ add_executable(picolo
 pico_set_program_name(picolo "picolo")
 pico_set_program_version(picolo "1.0")
 
+# Create C header file with the name <pio program>.pio.h
+pico_generate_pio_header(${PROJECT_NAME}  
+        ${CMAKE_CURRENT_LIST_DIR}/ztick.pio
+)
+pico_generate_pio_header(${PROJECT_NAME}  
+        ${CMAKE_CURRENT_LIST_DIR}/zproc.pio
+)
+
 # Modify the below lines to enable/disable output over UART/USB
 # disable UART: we need every pin we can get
 pico_enable_stdio_uart(picolo 0)

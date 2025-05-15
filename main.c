@@ -41,6 +41,8 @@
 #include "conio.h"
 #include "shell.h"
 #include "sdcard.h"
+#include "ztick.pio.h"
+#include "zproc.pio.h"
 
 // TMDS bit clock 252 MHz
 // DVDD 1.2V (1.1V seems ok too)
@@ -122,25 +124,64 @@ bool display_timer_callback(__unused struct repeating_timer *t) {
 
 	framecount++;
 
-	// TEST: clock the Z80 at 5Hz
-	if(!(tick_count % 5)) {
-		if(!clock_on) {
-			gpio_put(28, true);
-			clock_on = 1;
-			Con_puts(".");
-		} else {
-			gpio_put(28, false);
-			clock_on = 0;
-		}
-	}
-	if(!(tick_count%100))
-		Con_puts("\n");
-	if(!(tick_count%500))
-		Con_puts("O\n");
-
-	tick_count++;
 
 	return true;
+}
+
+// Z80 clock ticking
+// Note the pio program currently is hard coded to tick the Z80 at 10 Hz
+void start_z80() {
+
+	static const uint clock_pin = 28;
+	static const float pio_freq = 2000;
+
+    // Choose PIO instance (0 or 1)
+    PIO pio = pio1;
+
+    // Get first free state machine in PIO 1
+    uint sm = pio_claim_unused_sm(pio, true);
+	Con_printf("ztick_sm: %d\n", sm);
+
+    // Add PIO program to PIO instruction memory. SDK will find location and
+    // return with the memory offset of the program.
+    uint offset = pio_add_program(pio, &ztick_program);
+	Con_printf("ztick program offset: %d\n", offset);
+
+	/*
+	The PIO state machine’s clock frequency is:
+	PIO frequency=System clock frequency / Clock divider
+	*/
+
+    // Calculate the PIO clock divider
+    float div = (float)clock_get_hz(clk_sys) / pio_freq;
+
+    // Initialize the program using the helper function in our .pio file
+    ztick_program_init(pio, sm, offset, clock_pin, div);
+
+    // Start running our PIO program in the state machine
+    pio_sm_set_enabled(pio, sm, true);
+
+}
+
+PIO z80_pio;
+uint z80_sm;
+
+void process_z80() {
+	// Choose PIO instance and claim a state machine
+    z80_pio = pio1;
+    z80_sm = pio_claim_unused_sm(z80_pio, true);
+	Con_printf("zproc_sm: %d\n", z80_sm);
+
+    // Load the PIO program
+    uint offset = pio_add_program(z80_pio, &zproc_program);
+	Con_printf("zproc program offset: %d\n", offset);
+
+    // Initialize the PIO state machine
+    zproc_program_init(z80_pio, z80_sm, offset);
+
+    // Start running our PIO program in the state machine
+    pio_sm_set_enabled(z80_pio, z80_sm, true);
+
 }
 
 int __not_in_flash("main") main() {
@@ -156,6 +197,7 @@ int __not_in_flash("main") main() {
 	//setup_default_uart();
     //stdio_init_all();
 
+	// switch on system LED to indicate we are running
 	gpio_init(LED_PIN);
 	gpio_set_dir(LED_PIN, GPIO_OUT);
 	gpio_put(LED_PIN, true);
@@ -218,13 +260,42 @@ int __not_in_flash("main") main() {
     struct repeating_timer timer;
     add_repeating_timer_ms(-20, display_timer_callback, NULL, &timer);
 
+	// start the Z80
+	start_z80();
+	process_z80();
+
+	// main loop
 	while (1) {
 
+		// TEST TEST TEST
+		// Wait for data in the RX FIFO
+        uint32_t pin_states = pio_sm_get_blocking(z80_pio, z80_sm);
+		
+		// Extract the 6-bit value (GP0-GP5)
+        //pin_states &= 0x3F; // Mask to 6 bits
+        pin_states = pin_states >> 26;
+		// Print the pin states
+        //Con_printf("A0-A5: 0x%04x\n", pin_states);
+		uint32_t time_ms = time_us_32() / 1000;
+        Con_printf("Time: %u ms - ", time_ms);
+        Con_printf("A0-A5: %d\n", pin_states);
+		/*
+		Con_printf("GP0-GP5 states: 0x%02x (GP0=%d, GP1=%d, GP2=%d, GP3=%d, GP4=%d, GP5=%d)\n",
+               pin_states,
+               (pin_states >> 0) & 1,
+               (pin_states >> 1) & 1,
+               (pin_states >> 2) & 1,
+               (pin_states >> 3) & 1,
+               (pin_states >> 4) & 1,
+               (pin_states >> 5) & 1); */
+
+
+		/*
 		char *line = ShellReadInput();	// does not block
 		if(line) {
 			// might start a shell process (such as editor) and not return for duration
 			ShellProcessLine(line);		
-		}
+		} */
 		
 //		__wfi();
 
