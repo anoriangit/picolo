@@ -87,7 +87,8 @@ pico_set_program_name(picolo "picolo")
 pico_set_program_version(picolo "1.0")
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(picolo 1)
+# disable UART: we need every pin we can get
+pico_enable_stdio_uart(picolo 0)
 pico_enable_stdio_usb(picolo 0)
 
 add_subdirectory(liblua)

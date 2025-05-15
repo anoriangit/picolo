@@ -105,6 +105,9 @@ void StopKeyRepeat() {
 	auto_repeat_key = 0;
 }
 
+uint32_t tick_count = 0;
+uint8_t clock_on = 0;
+
 // 50hz regular updates
 bool display_timer_callback(__unused struct repeating_timer *t) {
     //printf("Repeat at %lld\n", time_us_64());
@@ -118,7 +121,26 @@ bool display_timer_callback(__unused struct repeating_timer *t) {
 	}
 
 	framecount++;
-    return true;
+
+	// TEST: clock the Z80 at 5Hz
+	if(!(tick_count % 5)) {
+		if(!clock_on) {
+			gpio_put(28, true);
+			clock_on = 1;
+			Con_puts(".");
+		} else {
+			gpio_put(28, false);
+			clock_on = 0;
+		}
+	}
+	if(!(tick_count%100))
+		Con_puts("\n");
+	if(!(tick_count%500))
+		Con_puts("O\n");
+
+	tick_count++;
+
+	return true;
 }
 
 int __not_in_flash("main") main() {
@@ -130,12 +152,17 @@ int __not_in_flash("main") main() {
 	// Run system at TMDS bit clock
 	set_sys_clock_khz(DVI_TIMING.bit_clk_khz, true);
 
-	setup_default_uart();
-    stdio_init_all();
+	// not using uart (we need the pins :) )
+	//setup_default_uart();
+    //stdio_init_all();
 
 	gpio_init(LED_PIN);
 	gpio_set_dir(LED_PIN, GPIO_OUT);
 	gpio_put(LED_PIN, true);
+
+	// clock the Z80 manually for now
+	gpio_init(28);
+	gpio_set_dir(28, GPIO_OUT);
 
 	// init tinyusb host stack on configured roothub port
   	tusb_init();
@@ -143,7 +170,7 @@ int __not_in_flash("main") main() {
   	tuh_init(BOARD_TUH_RHPORT);
 
 	// get PicoDVI up and running
-	printf("Configuring DVI\n");
+	//printf("Configuring DVI\n");
 
 	dvi0.timing = &DVI_TIMING;
 	dvi0.ser_cfg = DVI_DEFAULT_SERIAL_CONFIG;
@@ -164,7 +191,7 @@ int __not_in_flash("main") main() {
 #endif
 
 	// start core1 renderer
-	printf("Core 1 start\n");
+	//printf("Core 1 start\n");
 	sem_init(&dvi_start_sem, 0, 1);
 	hw_set_bits(&bus_ctrl_hw->priority, BUSCTRL_BUS_PRIORITY_PROC1_BITS);
 	multicore_launch_core1(core1_main);
@@ -176,15 +203,15 @@ int __not_in_flash("main") main() {
     //lua_State *L = luaL_newstate();
     //luaL_openlibs(L);
 
-    printf("Free heap after init: %d\n", P_GetFreeHeap());
-	printf("Start rendering\n");
+    //printf("Free heap after init: %d\n", P_GetFreeHeap());
+	//printf("Start rendering\n");
 
 	DisplayOpen();
 	ConOpen();
 
-	sd_init_driver();
+	//sd_init_driver();
 	Con_printf("Picolo System v%s\n%d bytes free \n", PLATFORM_VERSION_STRING, P_GetFreeHeap());
-	Con_printf("card free:%ldMB\n", SDCardTest()/(1024*1024));
+	//Con_printf("card free:%ldMB\n", SDCardTest()/(1024*1024));
 	Con_puts("ready\n");
 
 	// drive text display and tuh at 50hz
