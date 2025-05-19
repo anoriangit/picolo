@@ -43,6 +43,9 @@
 #include "sdcard.h"
 #include "ztick.pio.h"
 #include "zproc.pio.h"
+#include "z80_ram.pio.h"
+
+#define START_DVI 1
 
 // TMDS bit clock 252 MHz
 // DVDD 1.2V (1.1V seems ok too)
@@ -123,24 +126,26 @@ bool display_timer_callback(__unused struct repeating_timer *t) {
 	}
 
 	framecount++;
-
-
 	return true;
 }
+
+uint ztick_sm;
 
 // Z80 clock ticking
 // Note the pio program currently is hard coded to tick the Z80 at 10 Hz
 void start_z80() {
 
 	static const uint clock_pin = 28;
-	static const float pio_freq = 2000;
+
+	// 4000:tick at 5Hz (2000 for 10Hz) (15 ~ 30Hz) (5 ~ 300Hz) (1 ~ 1KHz)
+	static const float pio_freq = 4000;		
 
     // Choose PIO instance (0 or 1)
     PIO pio = pio1;
 
     // Get first free state machine in PIO 1
-    uint sm = pio_claim_unused_sm(pio, true);
-	Con_printf("ztick_sm: %d\n", sm);
+    ztick_sm = pio_claim_unused_sm(pio, true);
+	Con_printf("ztick_sm: %d\n", ztick_sm);
 
     // Add PIO program to PIO instruction memory. SDK will find location and
     // return with the memory offset of the program.
@@ -154,17 +159,19 @@ void start_z80() {
 
     // Calculate the PIO clock divider
     float div = (float)clock_get_hz(clk_sys) / pio_freq;
+	Con_printf("ztick clock div: %f\n", div);
 
     // Initialize the program using the helper function in our .pio file
-    ztick_program_init(pio, sm, offset, clock_pin, div);
+    ztick_program_init(pio, ztick_sm, offset, clock_pin, div);
 
     // Start running our PIO program in the state machine
-    pio_sm_set_enabled(pio, sm, true);
+    pio_sm_set_enabled(pio, ztick_sm, true);
 
 }
 
 PIO z80_pio;
 uint z80_sm;
+int z80_dma;
 
 void process_z80() {
 	// Choose PIO instance and claim a state machine
@@ -179,13 +186,75 @@ void process_z80() {
     // Initialize the PIO state machine
     zproc_program_init(z80_pio, z80_sm, offset);
 
+    // Need to clear _input shift counter_, as well as FIFO, because there may be
+    // partial ISR contents left over from a previous run. sm_restart does this.
+    pio_sm_clear_fifos(z80_pio, z80_sm);
+    pio_sm_restart(z80_pio, z80_sm);
+ 	
+	// push pin mask to the tx fifo
+    pio_sm_put_blocking(z80_pio, z80_sm, 0b00000000111);
+
     // Start running our PIO program in the state machine
     pio_sm_set_enabled(z80_pio, z80_sm, true);
 
 }
 
+// ------------------------------------------------
+// new version of z80_ram
+
+#define SRAM_SIZE 256
+uint8_t sram[SRAM_SIZE];
+
+void start_z80_ram() {
+
+	Con_printf("Constants:\n PIN_COUNT=%d\n RD_PIN=%d\n ADDR_OE_PIN=%d\n DATA_OE_PIN=%d\n DELAY_COUNT=%d\n DELAY_LOOPS=%d\n",
+           z80_ram_PIN_COUNT, z80_ram_RD_PIN, z80_ram_ADDR_OE_PIN, z80_ram_DATA_OE_PIN,
+           z80_ram_DELAY_COUNT, z80_ram_DELAY_LOOPS);
+
+    // Initialize SRAM
+    for (int i = 0; i < SRAM_SIZE; i++) 
+		sram[i] = 0x00;
+
+	// example
+    //sram[0] = 0xC3; sram[1] = 0x00; sram[2] = 0x00; // JP 0
+
+    // RAM PIO (SM0)
+    z80_pio = pio1;
+    z80_sm = pio_claim_unused_sm(z80_pio, true);
+	Con_printf("z80_ram sm: %d\n", z80_sm);
+
+	uint offset_ram = pio_add_program(z80_pio, &z80_ram_program);
+    z80_ram_program_init(z80_pio, z80_sm, offset_ram);
+
+    // DMA
+    z80_dma = dma_claim_unused_channel(true);
+	Con_printf("z80_ram dma: %d\n", z80_sm);
+
+    dma_channel_config dma_config = dma_channel_get_default_config(z80_dma);
+    channel_config_set_transfer_data_size(&dma_config, DMA_SIZE_8);
+    channel_config_set_read_increment(&dma_config, false);
+    channel_config_set_write_increment(&dma_config, false);
+    channel_config_set_dreq(&dma_config, pio_get_dreq(z80_pio, z80_sm, false));
+    dma_channel_configure(
+        z80_dma,
+        &dma_config,
+        &z80_pio->txf[z80_sm],
+        sram,
+        1,
+        false
+    );
+
+}
+
+void shutdown(void) {
+	pio_sm_set_enabled(pio1, ztick_sm, false);
+	pio_sm_set_enabled(pio1, z80_sm, false);
+}
+
 int __not_in_flash("main") main() {
 //int main() {
+
+	atexit(shutdown);
 
 	vreg_set_voltage(VREG_VSEL);
 	sleep_ms(10);
@@ -213,7 +282,7 @@ int __not_in_flash("main") main() {
 
 	// get PicoDVI up and running
 	//printf("Configuring DVI\n");
-
+#if START_DVI
 	dvi0.timing = &DVI_TIMING;
 	dvi0.ser_cfg = DVI_DEFAULT_SERIAL_CONFIG;
 	dvi0.scanline_callback = core1_scanline_callback;
@@ -225,12 +294,10 @@ int __not_in_flash("main") main() {
 
 	// need to pass in the first two scan lines before we start the encoder on core1
 	// or the display won't sync, still don't understand why
-#if 1
 	uint8_t *bufptr = FRAMEBUF;
 	queue_add_blocking_u32(&dvi0.q_colour_valid, &bufptr);
 	bufptr += D_FRAME_WIDTH;
 	queue_add_blocking_u32(&dvi0.q_colour_valid, &bufptr);
-#endif
 
 	// start core1 renderer
 	//printf("Core 1 start\n");
@@ -238,6 +305,7 @@ int __not_in_flash("main") main() {
 	hw_set_bits(&bus_ctrl_hw->priority, BUSCTRL_BUS_PRIORITY_PROC1_BITS);
 	multicore_launch_core1(core1_main);
 	sem_release(&dvi_start_sem);
+#endif
 
 	// bring up the remainder of the system 
 
@@ -263,22 +331,50 @@ int __not_in_flash("main") main() {
 	// start the Z80
 	start_z80();
 	process_z80();
+	//start_z80_ram();
 
 	// main loop
 	while (1) {
 
 		// TEST TEST TEST
+
+#if 0
+
+     	//pio_sm_set_consecutive_pindirs(z80_pio, z80_sm, 0, z80_ram_PIN_COUNT, false);
+        
+		uint32_t addr = pio_sm_get_blocking(z80_pio, z80_sm) >> 24;
+        Con_printf("Addr: 0x%02x, Data: 0x%02x\n", addr, sram[addr]);
+
+        //pio_sm_set_consecutive_pindirs(z80_pio, z80_sm, 0, z80_ram_PIN_COUNT, true);
+       
+		dma_channel_set_read_addr(z80_dma, &sram[addr], true);
+#else
 		// Wait for data in the RX FIFO
         uint32_t pin_states = pio_sm_get_blocking(z80_pio, z80_sm);
-		
+	
+		// reconfigure bus pins for output (true)
+	    // pio_sm_set_consecutive_pindirs(z80_pio, z80_sm, 0, 8, true);
+
 		// Extract the 6-bit value (GP0-GP5)
         //pin_states &= 0x3F; // Mask to 6 bits
-        pin_states = pin_states >> 26;
+		static uint8_t last_addr = 0;
+		uint8_t addr = pin_states >> 24;
+
 		// Print the pin states
         //Con_printf("A0-A5: 0x%04x\n", pin_states);
+		static uint32_t last_time_ms;
 		uint32_t time_ms = time_us_32() / 1000;
-        Con_printf("Time: %u ms - ", time_ms);
-        Con_printf("A0-A5: %d\n", pin_states);
+        
+		if(addr != ++last_addr) {
+			Con_printf("%ums Error: addr:%u last:%u\n", time_ms, addr, last_addr);
+		}
+
+		Con_printf("dT: %u ms - ", time_ms-last_time_ms);
+        Con_printf("A0-A7: %d\n", addr);
+
+		last_time_ms = time_ms;
+		last_addr = addr;
+
 		/*
 		Con_printf("GP0-GP5 states: 0x%02x (GP0=%d, GP1=%d, GP2=%d, GP3=%d, GP4=%d, GP5=%d)\n",
                pin_states,
@@ -289,7 +385,7 @@ int __not_in_flash("main") main() {
                (pin_states >> 4) & 1,
                (pin_states >> 5) & 1); */
 
-
+#endif
 		/*
 		char *line = ShellReadInput();	// does not block
 		if(line) {

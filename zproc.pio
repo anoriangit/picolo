@@ -1,4 +1,19 @@
-.program zproc
+
+; This program reads 12 pins (GP0-GP11) 
+; GP0-GP7 are connected to the Z80 address lines A0-A7 (through a transceiver)
+; GP11 = RD
+
+
+; Transceiver Information
+; SN74LVC245A used for 5V -> 3.3V down translation
+; runs at VCC 3.3V
+; Pin propagation time at VCC: max 8.3 ns
+; OE Enable at VCC: 11 ns
+; OE Disable at VCC: 9.5 ns
+
+; TXS0108E
+; OE Enable: 200 ns
+; OE Disable: 400 ns
 
 
 ; timing at 252MHz
@@ -6,50 +21,125 @@
 ; in: 1 cycle = 3.968 ns
 ; push: 1 cycle = 3.968 ns
 ; wrap: 0 cycles
-; Total per loop (without wait blocking): 3×3.968=11.904 ns3 \times 3.968 = 11.904 \, \text{ns}3 \times 3.968 = 11.904 \, \text{ns}
+; Total per loop (without wait blocking): 3×3.968=11.904
 ; If wait blocks, add the blocking time (in multiples of 3.968 ns based on how many cycles GP6 is low).
 
 
+.program zproc
+
+.define public NUM_BUS_PINS    8    ; (0-7)
+.define public NUM_PINS        11   ; (0-10)
+
+.define public RD_PIN      8
+.define public ADDR_OE_PIN 9     ; GP9 for address transceiver OE
+.define public DATA_OE_PIN 10    ; GP10 for data transceiver OE
+
 ; This is used to process data to&from the Z80
+
+    /* NOTE on "out"
+     * this function writes 32bits to your pins, no matter how many bits 
+     * you specify as argument. The argument only defines how many bits come from the OSR
+     * the remainder is written as 0. In our case this means that pins 8-10, which
+     * we carefully set up to be outputs, will be set to 0 to and thus redefined
+     * as inputs by the "out"
+     */
+    mov osr, null
+    out pindirs, NUM_BUS_PINS
+
+    // switch OE control pins back to output (see note above)
+    // note that GP8 (RD) has been set to "input" by the "out" above too
+    set pindirs, 0b11 [2]   ; GP9, GP10 outputs (bits 0, 1)
+    set pins, 0b00          ; ADDR_OE low (0) (active), DATA_OE low (0) (inactive)
+    nop [25]                ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
+
+    set x, 0
+
     .wrap_target
 
+    ; ------------------------------------
     ; Wait for GP6 to go low (active)
-    wait 1 pin 6      ; Wait until GP6 (pin 6) is high
-    wait 0 pin 6      ; Wait until GP6 (pin 6) is low  
-    ;nop         [3]    ; Wait 20 cycles
+    wait 1 pin RD_PIN       ; Wait until GP6 (pin 6) is high
+    wait 0 pin RD_PIN       ; Wait until GP6 (pin 6) is low  
     
-    ; Read GP0-GP5 states into ISR (Input Shift Register)
-    in pins, 6        ; Read 6 pins (GP0-GP5) into ISR
-    ; Push the read value to the RX FIFO
-    push              ; Send the 6-bit value to the RX FIFO
+    ; ------------------------------------
+    ; Read GP0-GP7 states into ISR (Input Shift Register)
+    ; NOTE: we should not have to add a delay for transceiver propagation
+    ; here because the RD signal passes through the same type of transceiver too
+    ; For stability reasons though (two transceivers will never be *exactly* the same)
+    ; we add a small delay anyway
+    ;nop [2]                     ; 3*3.698ns delay    
+    in pins, NUM_BUS_PINS       ; Read pins into ISR
+    push                        ; push the value read to the RX FIFO
 
 
+    ; ------------------------------------
+    ; Switch transceivers to data output
+    ; wait for OE to propagate (3 ticks delay is enough for SN but not for TSX)
+
+    ;set pindirs, 0b11   ; GP9, GP10 outputs (bits 0, 1)
+    ;set pins, 0b11      ; ADDR_OE high (1) (inactive), DATA_OE high (1) (active)
+    /*
+    nop [25]                ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
+    nop [25]                ; min. 200ns needed for enable
+    */
+
+    ; write a 0 byte (NOP) to data bus
+    ;mov osr, ~NULL [6]          ; switch pindirs to output (1)
+    ;out pindirs,8
+    ;mov osr,x                   ; write a NOP
+    ;out pins, NUM_BUS_PINS [6]  ; write to pins from OSR
+    ;mov osr, NULL [6]           ; revert pindirs to input (0)
+    ;out pindirs,8
+
+
+    ; Switch transceivers back to addr:active, data: inactive  
+    ;set pindirs, 0b11   ; GP9, GP10 outputs (bits 0, 1)
+    ;set pins, 0b00      ; ADDR_OE low (0), DATA_OE low (0)
+    /*
+    nop [25]                ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
+    nop [25]                ; min. 400ns needed for enable
+    nop [25]
+    nop [25]
+    */
     .wrap
+
 
 % c-sdk {
 
 // Helper function (for use in C program) to initialize this PIO program
 void zproc_program_init(PIO pio, uint sm, uint offset) {
 
+    // Initialize all our pins
+    // NOTE: pio_gpio_init(), from the official docs:
+    // Note that this is not necessary for a state machine to be able to read the 
+    // input value from a GPIO, but only for it to set the output value or output enable.
+    for (uint i = 0; i < zproc_NUM_PINS; i++) {
+        pio_gpio_init(pio, i);
+        //gpio_set_pulls(i, false, true); // Enable pull-down, disable pull-up
+    }
+
     // Sets up state machine and wrap target. This function is automatically
     // generated in zproc.pio.h.
     pio_sm_config c = zproc_program_get_default_config(offset);
 
-    // Set pin base for input (GP0-GP6)
-    sm_config_set_in_pins(&c, 0);       // Start at GP0
-    sm_config_set_in_pin_count(&c, 7);  // GP0-GP6 (7 pins)
+    // input pins (GP0-GP7) setup
+    sm_config_set_in_pins(&c, 0);           // Start at GP0
+    sm_config_set_in_pin_count(&c, 8);      // GP0-GP7 (8 pins)
 
-    // Set shift direction (right shift for ISR)
+    // output pins setup (overlaps in pins)
+    sm_config_set_out_pins(&c, 0, zproc_NUM_BUS_PINS);
+
+    // define "set pins" (pins affected by the "set" operation)
+    // two pins starting at ADDR_OE_PIN
+    sm_config_set_set_pins(&c, zproc_ADDR_OE_PIN, 2);
+
+    // Set shift direction for ISR & OSR (right shift)
     sm_config_set_in_shift(&c, true, false, 32); // Right shift, no autopush
+    sm_config_set_out_shift(&c, true, false, 32); // Right shift, no autopush
 
-    // Initialize GP0-GP6 as PIO-controlled inputs
-    for (uint i = 0; i <= 6; i++) {
-        pio_gpio_init(pio, i);
-        // gpio_set_pulls(i, false, true); // Enable pull-down, disable pull-up
-    }
-
-    // Set GP0-GP6 as inputs
-    pio_sm_set_consecutive_pindirs(pio, sm, 0, 7, false);    // false = input
+    // Configure GP0-GP7 as inputs initially
+    // pio, sm, basepin, numpins, is_out
+    // pio_sm_set_consecutive_pindirs(pio, sm, 0, zproc_NUM_BUS_PINS, false);    // false = 0 = input
     
     // Load configuration and jump to start of the program
     pio_sm_init(pio, sm, offset, &c);

@@ -15,11 +15,11 @@
     nop         [19]    ; Wait 20 cycles
     nop         [19]    ; Wait 20 cycles
 
-;    nop         [19]    ; Wait 20 cycles
-;    nop         [19]    ; Wait 20 cycles
-;    nop         [19]    ; Wait 20 cycles
-;    nop         [19]    ; Wait 20 cycles
-;    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
 
     set pins, 0 [19]    ; Turn LED off and wait another 19 cycles
     nop         [19]    ; Wait 20 cycles
@@ -27,11 +27,11 @@
     nop         [19]    ; Wait 20 cycles
     nop         [19]    ; Wait 20 cycles
 
-;    nop         [19]    ; Wait 20 cycles
-;    nop         [19]    ; Wait 20 cycles
-;    nop         [19]    ; Wait 20 cycles
-;    nop         [19]    ; Wait 20 cycles
-;    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
 
 .wrap
 

@@ -1,0 +1,95 @@
+.program z80_ram
+.define public PIN_COUNT 8        ; A0-A7, D0-D7
+.define public RD_PIN 8          ; GP8 for RD
+.define public ADDR_OE_PIN 9     ; GP9 for address transceiver OE
+.define public DATA_OE_PIN 10    ; GP10 for data transceiver OE
+.define public DELAY_COUNT 31    ; Counter for SET (0-31)
+.define public DELAY_LOOPS 8     ; 8 loops for ~1 ms
+
+    ; Initialize: Address enabled, data disabled
+    set pindirs, 0x3 [6] ; GP9, GP10 outputs (bits 0, 1), delay
+    set pins, 0x0        ; ADDR_OE low (0) (active), DATA_OE low (0) (inactive)
+    set x, 0
+
+.wrap_target
+    
+    wait 1 pin RD_PIN       ; Wait for RD high (inactive)
+    wait 0 pin RD_PIN       ; Wait for RD low  (active)
+    
+    ; Read address (A0-A7)
+    in pins, PIN_COUNT
+    push
+
+    ; Switch transceivers to data output
+    set pins, 0b11        ; ADDR_OE high (1) (inactive), DATA_OE high (1) (active)
+
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+    nop         [19]    ; Wait 20 cycles
+
+    ; pull one byte from DMA and push it out the pins
+    ;pull
+    ;out pins, PIN_COUNT
+    
+    mov pins,x [6]
+
+    ; Switch transceivers back to addr:active, data: inactive and wait for two cycles
+    ; to stabilize
+    set pins, 0x0 [6]    ; ADDR_OE low (0), DATA_OE low (0)
+    
+.wrap
+
+% c-sdk {
+#include "hardware/pio.h"
+static inline void z80_ram_program_init(PIO pio, uint sm, uint offset) {
+    pio_sm_config c = z80_ram_program_get_default_config(offset);
+    
+    sm_config_set_in_pins(&c, 0);
+    sm_config_set_in_pin_count(&c, z80_ram_PIN_COUNT + 1);  // +1 includes RD: needed?
+
+    //sm_config_set_out_pins(&c, 0, z80_ram_PIN_COUNT);
+
+    // define "set pins" (pins affected by the "set" operation)
+    sm_config_set_set_pins(&c, z80_ram_ADDR_OE_PIN, 2);
+
+    // configure isr and osr
+    sm_config_set_in_shift(&c, true, false, 32);
+    sm_config_set_out_shift(&c, true, false, 32);
+
+    // init all used pins (GP0-GP10)
+    for (uint i = 0; i <= z80_ram_DATA_OE_PIN; i++) {
+        pio_gpio_init(pio, i);
+        //gpio_set_pulls(i, false, i <= z80_ram_PIN_COUNT);
+    }
+
+    // Set bus pins (GP0-GP7) as inputs initially
+    pio_sm_set_consecutive_pindirs(pio, sm, 0, z80_ram_PIN_COUNT, false);
+    
+    // Set OE pins (GP9-GP10) as outputs
+    pio_sm_set_consecutive_pindirs(pio, sm, z80_ram_ADDR_OE_PIN, 2, true);
+
+    // init and start state machine    
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
