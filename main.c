@@ -138,7 +138,9 @@ void start_z80() {
 	static const uint clock_pin = 28;
 
 	// 4000:tick at 5Hz (2000 for 10Hz) (15 ~ 30Hz) (5 ~ 300Hz) (1 ~ 1KHz)
-	static const float pio_freq = 4000;		
+	// new: 5000->124Hz, 10000->250Hz 
+	// static const float pio_freq = 1000;		
+	static const float pio_freq = 2000;		
 
     // Choose PIO instance (0 or 1)
     PIO pio = pio1;
@@ -173,6 +175,9 @@ PIO z80_pio;
 uint z80_sm;
 int z80_dma;
 
+#define SRAM_SIZE 256
+uint8_t sram[SRAM_SIZE];
+
 void process_z80() {
 	// Choose PIO instance and claim a state machine
     z80_pio = pio1;
@@ -191,6 +196,24 @@ void process_z80() {
     pio_sm_clear_fifos(z80_pio, z80_sm);
     pio_sm_restart(z80_pio, z80_sm);
  	
+    // DMA
+    z80_dma = dma_claim_unused_channel(true);
+	Con_printf("z80_ram dma: %d\n", z80_sm);
+
+    dma_channel_config dma_config = dma_channel_get_default_config(z80_dma);
+    channel_config_set_transfer_data_size(&dma_config, DMA_SIZE_8);
+    channel_config_set_read_increment(&dma_config, false);
+    channel_config_set_write_increment(&dma_config, false);
+    channel_config_set_dreq(&dma_config, pio_get_dreq(z80_pio, z80_sm, false));
+    dma_channel_configure(
+        z80_dma,
+        &dma_config,
+        &z80_pio->txf[z80_sm],
+        sram,
+        1,
+        false
+    );
+
 	// push pin mask to the tx fifo
     pio_sm_put_blocking(z80_pio, z80_sm, 0b00000000111);
 
@@ -202,8 +225,6 @@ void process_z80() {
 // ------------------------------------------------
 // new version of z80_ram
 
-#define SRAM_SIZE 256
-uint8_t sram[SRAM_SIZE];
 
 void start_z80_ram() {
 
@@ -329,9 +350,11 @@ int __not_in_flash("main") main() {
     add_repeating_timer_ms(-20, display_timer_callback, NULL, &timer);
 
 	// start the Z80
-	start_z80();
 	process_z80();
+	start_z80();
 	//start_z80_ram();
+
+	uint32_t n_loops = 0;
 
 	// main loop
 	while (1) {
@@ -364,17 +387,23 @@ int __not_in_flash("main") main() {
         //Con_printf("A0-A5: 0x%04x\n", pin_states);
 		static uint32_t last_time_ms;
 		uint32_t time_ms = time_us_32() / 1000;
-        
-		if(addr != ++last_addr) {
-			Con_printf("%ums Error: addr:%u last:%u\n", time_ms, addr, last_addr);
+      
+#if 0	
+		if(addr != last_addr+4) {
+			Con_printf("%ums E: addr:%u last:%u diff:%u\n", time_ms, addr, last_addr, addr-last_addr);
 		}
+#endif
 
+#if 1
 		Con_printf("dT: %u ms - ", time_ms-last_time_ms);
         Con_printf("A0-A7: %d\n", addr);
-
+#endif
 		last_time_ms = time_ms;
 		last_addr = addr;
-
+		n_loops++;
+		if(!(n_loops%1000)) {
+			Con_printf(".");
+		}
 		/*
 		Con_printf("GP0-GP5 states: 0x%02x (GP0=%d, GP1=%d, GP2=%d, GP3=%d, GP4=%d, GP5=%d)\n",
                pin_states,

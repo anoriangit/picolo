@@ -52,55 +52,78 @@
     set pins, 0b00          ; ADDR_OE low (0) (active), DATA_OE low (0) (inactive)
     nop [25]                ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
 
-    set x, 0
+    set x, 1
 
     .wrap_target
 
     ; ------------------------------------
     ; Wait for GP6 to go low (active)
-    wait 1 pin RD_PIN       ; Wait until GP6 (pin 6) is high
     wait 0 pin RD_PIN       ; Wait until GP6 (pin 6) is low  
-    
+
+    ; ------------------------------------
+    ; Note that everything below absolutely MUST happen within the time
+    ; that the Z80 needs before it will request  the next byte
+    ; The minimum timespan is 4 Z80 cycles
+    ; at 4MHz the Z80 needs 1usec (1000ns) for 4 cycles
+    ; while the PIO (at 252MHz) requires 3.968 ns / operation
+    ; ==> we can process ~ 252 pio operations during one Z80 cycle
+    ; Problem: The TXS0108E needs extremely long for enable/disable
+    ; as long as that is in use 200+400=600ns are required for OE on
+    ; that transceiver alone
+
+
     ; ------------------------------------
     ; Read GP0-GP7 states into ISR (Input Shift Register)
     ; NOTE: we should not have to add a delay for transceiver propagation
     ; here because the RD signal passes through the same type of transceiver too
     ; For stability reasons though (two transceivers will never be *exactly* the same)
     ; we add a small delay anyway
-    ;nop [2]                     ; 3*3.698ns delay    
+    ;nop [7]                    ; 3*3.698ns delay    
     in pins, NUM_BUS_PINS       ; Read pins into ISR
     push                        ; push the value read to the RX FIFO
-
 
     ; ------------------------------------
     ; Switch transceivers to data output
     ; wait for OE to propagate (3 ticks delay is enough for SN but not for TSX)
 
-    ;set pindirs, 0b11   ; GP9, GP10 outputs (bits 0, 1)
-    ;set pins, 0b11      ; ADDR_OE high (1) (inactive), DATA_OE high (1) (active)
-    /*
-    nop [25]                ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
+    ;set pindirs, 0b11 [2]   ; GP9, GP10 outputs (bits 0, 1)
+    set pins, 0b11         ; ADDR_OE high (1) (inactive), DATA_OE high (1) (active)
+    
+    nop [25]                ; 26 cycles delay (26*3.968=103.168ns) for TXS0108E transition
     nop [25]                ; min. 200ns needed for enable
-    */
-
+    
     ; write a 0 byte (NOP) to data bus
-    ;mov osr, ~NULL [6]          ; switch pindirs to output (1)
-    ;out pindirs,8
-    ;mov osr,x                   ; write a NOP
-    ;out pins, NUM_BUS_PINS [6]  ; write to pins from OSR
-    ;mov osr, NULL [6]           ; revert pindirs to input (0)
-    ;out pindirs,8
+    mov osr, ~null              ; switch pindirs to output (1)
+    out pindirs,8
 
+    ;set y,0
+
+    jmp x-- write_0a
+    set y, 2
+    set x, 1
+    jmp do_out
+    write_0a:
+    set y, 0x18
+
+    do_out:
+    mov osr,y                   ; move opcode from y into osr
+    out pins, NUM_BUS_PINS      ; write to pins from OSR
+
+    wait 1 pin RD_PIN       ; Wait until GP6 (pin 6) is high
+
+    mov osr, null               ; revert pindirs to input (0)
+    out pindirs,8
 
     ; Switch transceivers back to addr:active, data: inactive  
     ;set pindirs, 0b11   ; GP9, GP10 outputs (bits 0, 1)
-    ;set pins, 0b00      ; ADDR_OE low (0), DATA_OE low (0)
-    /*
+    set pins, 0b00      ; ADDR_OE low (0) active, DATA_OE low (0) inactive
+
     nop [25]                ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
-    nop [25]                ; min. 400ns needed for enable
+    nop [25]                ; min. 400ns needed for disable
     nop [25]
     nop [25]
-    */
+
+
     .wrap
 
 
@@ -138,6 +161,7 @@ void zproc_program_init(PIO pio, uint sm, uint offset) {
     sm_config_set_out_shift(&c, true, false, 32); // Right shift, no autopush
 
     // Configure GP0-GP7 as inputs initially
+    // NOTE: replaced with code in the pio asm program
     // pio, sm, basepin, numpins, is_out
     // pio_sm_set_consecutive_pindirs(pio, sm, 0, zproc_NUM_BUS_PINS, false);    // false = 0 = input
     
