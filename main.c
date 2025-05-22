@@ -264,7 +264,7 @@ int process_z80() {
     channel_config_set_read_increment(&cdmaLookup, false);
     channel_config_set_write_increment(&cdmaLookup, false);
     channel_config_set_dreq(&cdmaLookup, pio_get_dreq(z80_pio, z80_sm, true)); // dreq true=send to sm, false=read from sm
-    //channel_config_set_chain_to(&cdmaLookup, read_addr_dma);
+    channel_config_set_chain_to(&cdmaLookup, read_addr_dma);
 
 	/*
 	Configure all DMA parameters and optionally start transfer.
@@ -294,7 +294,7 @@ int process_z80() {
     channel_config_set_read_increment(&cdma, false);
     channel_config_set_write_increment(&cdma, false);
     channel_config_set_dreq(&cdma, pio_get_dreq(z80_pio, z80_sm, false));
-    //channel_config_set_chain_to(&cdmaLookup, read_ram_dma);
+    channel_config_set_chain_to(&cdmaLookup, read_ram_dma);
 
 	dma_channel_configure(
         read_addr_dma,
@@ -302,7 +302,7 @@ int process_z80() {
         &dma_hw->ch[read_ram_dma].al3_read_addr_trig,	// write to
         &z80_pio->rxf[z80_sm],							// read from
         1,												// transfers count
-        false
+        true
 	);
 
 	// push 24 most significant bits of the base address of SRAM
@@ -321,12 +321,12 @@ int process_z80() {
 
 #if 1
 	// try a pio irq
-	pio_set_irq0_source_mask_enabled(z80_pio, 3840, true);	// enables all 4 irq
+	pio_set_irq0_source_mask_enabled(z80_pio, 0b0000111100000000 /*3840*/, true);	// enables all 4 irq
     irq_set_exclusive_handler(PIO1_IRQ_0, dma_irq_handler_address);
     //pio_set_irqn_source_enabled(z80_pio, PIO_IRQ_TO_USE, pio_get_rx_fifo_not_empty_interrupt_source(z80_pio), true);
 	irq_set_enabled(PIO1_IRQ_0, true);
-
 #endif
+
 	return 0;
 }
 
@@ -430,8 +430,6 @@ int __not_in_flash("main") main() {
 	// main loop
 	while (1) {
 
-		static uint8_t last_addr = 0;
-
 #if 0
 
      	//pio_sm_set_consecutive_pindirs(z80_pio, z80_sm, 0, z80_ram_PIN_COUNT, false);
@@ -444,8 +442,11 @@ int __not_in_flash("main") main() {
 		dma_channel_set_read_addr(z80_dma, &sram[addr], true);
 #else
 		if(!error) {
-		
-		// "Manual" variant (CPU does the transfer)
+
+#if 0
+		// semi automatic DMA variant: 
+		// read address from rx fifo and then trigger read_ram_dma 
+
 		// Wait for data in the RX FIFO
 		uint32_t pin_states = pio_sm_get_blocking(z80_pio, z80_sm);
 
@@ -458,11 +459,11 @@ int __not_in_flash("main") main() {
 
 		// transfer the data byte from SRAM to the pio tx fifo, either via dma or manually
 		/* full auto DMA variant does not need any of this */
-#if 1
-		// semi automatic DMA variant: 
 		// write the address to read from to the read_ram dma channel and trigger it
 		dma_channel_set_read_addr(read_ram_dma, (void*)((uint8_t*)addr), true);
-#else
+#endif
+
+#if 0
 		// pure CPU "manual" variant
 		// for left shift osr we need to move the data byte into the msb of the 32 bit word
 		// uint32_t data = SRAM[addr] << 24;
@@ -471,8 +472,8 @@ int __not_in_flash("main") main() {
 #endif
 		// DEBUG: Print the pin states
         //Con_printf("A0-A5: 0x%04x\n", pin_states);
-		static uint32_t last_time_ms;
-		uint32_t time_ms = time_us_32() / 1000;
+		// static uint32_t last_time_ms;
+		// uint32_t time_ms = time_us_32() / 1000;
       
 #if 0	
 		if(addr != last_addr+4) {
@@ -485,12 +486,6 @@ int __not_in_flash("main") main() {
         Con_printf("A0-A7: %d\n", addr&0x000000ff);
 #endif
 	
-		last_time_ms = time_ms;
-		last_addr = addr;
-		n_loops++;
-		if(!(n_loops%1000)) {
-			Con_printf(".");
-		}
 	
 #endif
 	}
