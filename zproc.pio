@@ -85,6 +85,8 @@
     in pins, NUM_BUS_PINS       ; shift pins into ISR
     push                        ; push the value read to the RX FIFO
 
+    irq 0
+
     ; ------------------------------------
     ; Switch transceivers to data output
     ; wait for OE to propagate (3 ticks delay is enough for SN but not for TSX)

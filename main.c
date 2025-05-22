@@ -10,6 +10,8 @@
 #include "hardware/sync.h"
 #include "hardware/vreg.h"
 #include "hardware/structs/bus_ctrl.h"
+#include "hardware/pio.h"
+#include "hardware/dma.h"
 #include "pico/sem.h"
 
 // tinyusb
@@ -53,6 +55,17 @@
 #define DVI_TIMING dvi_timing_640x480p_60hz
 
 #define LED_PIN PICO_DEFAULT_LED_PIN
+
+#ifndef DMA_IRQ_PRIORITY
+#define DMA_IRQ_PRIORITY PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY
+#endif
+
+#ifndef PIO_IRQ_PRIORITY
+#define PIO_IRQ_PRIORITY PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY
+#endif
+
+#define PIO_IRQ_TO_USE 0
+#define DMA_IRQ_TO_USE 0
 
 struct dvi_inst dvi0;
 struct semaphore dvi_start_sem;
@@ -183,16 +196,17 @@ uint8_t SRAM[SRAM_SIZE] __attribute__((aligned(256)));
 
 void __not_in_flash_func(dma_irq_handler_address)(void) {
 
+	// Clear the interrupt request for the dma channel
+    // Clear the interrupt request.
+    // dma_hw->ints1 = 1u << read_ram_dma;
+	pio_interrupt_clear(z80_pio, 0);
+
     uint32_t addr = (uint32_t)dma_hw->ch[read_ram_dma].al3_read_addr_trig;
     // uint16_t value = *((uint16_t *)addr);
     // DPRINTF("DMA ADDR: $%x, VALUE: $%x\n", addr, value);
 
-    Con_printf("DMA IRQ: addr:%u\n", addr);
+    Con_printf("PIO IRQ: SRAM addr:%u\n", addr&0x000000ff);
     //Con_printf(".");
-
-	// Clear the interrupt request for the dma channel
-    // Clear the interrupt request.
-    dma_hw->ints1 = 1u << read_addr_dma;
 
     // Restart the DMA
     //    dma_channel_start(1);
@@ -291,19 +305,28 @@ int process_z80() {
         false
 	);
 
-	// DEBUG: irq handler for read_addr_dma
-#if 0
-    dma_channel_set_irq1_enabled(read_addr_dma, true);
-    irq_set_exclusive_handler(DMA_IRQ_1, dma_irq_handler_address);
-    irq_set_enabled(DMA_IRQ_1, true);
-#endif
-
 	// push 24 most significant bits of the base address of SRAM
 	pio_sm_put(z80_pio, z80_sm, (uintptr_t) SRAM>>8);
 
     // Start running our PIO program in the state machine
     pio_sm_set_enabled(z80_pio, z80_sm, true);
 
+	// DEBUG: irq handler for read_ram_dma
+	// can not get this to work at all :(
+#if 0
+    irq_add_shared_handler(DMA_IRQ_TO_USE, dma_irq_handler_address, DMA_IRQ_PRIORITY);
+    irq_set_enabled(dma_get_irq_num(DMA_IRQ_TO_USE), true);
+	dma_irqn_set_channel_enabled(DMA_IRQ_TO_USE, read_ram_dma, true);
+#endif
+
+#if 1
+	// try a pio irq
+	pio_set_irq0_source_mask_enabled(z80_pio, 3840, true);	// enables all 4 irq
+    irq_set_exclusive_handler(PIO1_IRQ_0, dma_irq_handler_address);
+    //pio_set_irqn_source_enabled(z80_pio, PIO_IRQ_TO_USE, pio_get_rx_fifo_not_empty_interrupt_source(z80_pio), true);
+	irq_set_enabled(PIO1_IRQ_0, true);
+
+#endif
 	return 0;
 }
 
@@ -389,15 +412,6 @@ int __not_in_flash("main") main() {
     struct repeating_timer timer;
     add_repeating_timer_ms(-20, display_timer_callback, NULL, &timer);
 
-	// ---------------------------------------
-	// DMA setup
-	// Adjust Channel 1’s write address to include SRAM base (optional buffer for testing)
-    //addr_buffer = (uint32_t)SRAM; // Initialize with SRAM base
-    //dma_channel_set_read_addr(read_ram_dma, &addr_buffer, false);
-    //dma_channel_set_write_addr(read_addr_dma, &dma_hw->ch[read_ram_dma].al3_read_addr_trig, false);
-    // Start DMA chain
-    // dma_channel_start(read_addr_dma);
-	
 	
 	// start the Z80 ticking
 	int error = 0;
@@ -410,7 +424,6 @@ int __not_in_flash("main") main() {
 		Con_printf("Error starting Z80 clock\n");
 		error = 1;
 	}
-
 
 	uint32_t n_loops = 0;
 
@@ -446,10 +459,11 @@ int __not_in_flash("main") main() {
 		// transfer the data byte from SRAM to the pio tx fifo, either via dma or manually
 		/* full auto DMA variant does not need any of this */
 #if 1
-		// DMA variant
+		// semi automatic DMA variant: 
+		// write the address to read from to the read_ram dma channel and trigger it
 		dma_channel_set_read_addr(read_ram_dma, (void*)((uint8_t*)addr), true);
 #else
-		// CPU "manual" variant
+		// pure CPU "manual" variant
 		// for left shift osr we need to move the data byte into the msb of the 32 bit word
 		// uint32_t data = SRAM[addr] << 24;
 		uint32_t data = (*((uint8_t*)addr)) << 24;
@@ -466,7 +480,7 @@ int __not_in_flash("main") main() {
 		}
 #endif
 
-#if 1
+#if 0
 		Con_printf("dT: %03u ms - ", time_ms-last_time_ms);
         Con_printf("A0-A7: %d\n", addr&0x000000ff);
 #endif
