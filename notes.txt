@@ -13,9 +13,8 @@ Flow:
     - ISR (left shift) gets initialised with high order 24 bits of SRAM address
     - pio program shifts bus pins into ISR, completing the address, and pushes to RX fifo
     - attached DMA channel (read_addr_dma) triggers
-    - addr_read_dma writes address to the read trigger of DMA channel read_ram_dma
+    - read_addr_dma writes the address to the read trigger of DMA channel read_ram_dma
     - DMA channel read_ram_dma triggers, reads one byte from SRAM at address and pushes to TX fifo
-    - pio program pulls data byte and pushes it to data bus
+    - pio program pulls data byte and shifts it out to data bus
+    - pio program waits for RD to go inactive (high), signalling that Z80 has completed its read cycle
     - rinse & repeat
-
-

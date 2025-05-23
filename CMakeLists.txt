@@ -59,6 +59,8 @@ add_compile_definitions(USE_PRINTF)
 # Add executable. Default name is the project name, version 0.1
 add_executable(picolo
     main.c 
+    z80_memory.c
+    z80_memory.h
     platform.c
     platform.h
     besciifont.h

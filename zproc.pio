@@ -1,7 +1,7 @@
 
-; This program reads 12 pins (GP0-GP11) 
+;
 ; GP0-GP7 are connected to the Z80 address lines A0-A7 (through a transceiver)
-; GP11 = RD
+; 
 
 
 ; Transceiver Information
@@ -30,7 +30,8 @@
 .define public NUM_BUS_PINS    8    ; (0-7)
 .define public NUM_PINS        11   ; (0-10)
 
-.define public RD_PIN      8
+.define public RD_PIN      27
+.define public WR_PIN      26
 .define public ADDR_OE_PIN 9     ; GP9 for address transceiver OE
 .define public DATA_OE_PIN 10    ; GP10 for data transceiver OE
 
@@ -40,18 +41,14 @@
     pull
     mov x, osr
    
-    /* NOTE on "out"
-     * this function writes 32bits to your pins, no matter how many bits 
-     * you specify as argument. The argument only defines how many bits come from the OSR
-     * the remainder is written as 0. In our case this means that pins 8-10, which
-     * we carefully set up to be outputs, will be set to 0 to and thus redefined
-     * as inputs by the "out"
-     */
+    ; switch bus pins to in (0)
     mov osr, null
     out pindirs, NUM_BUS_PINS
 
-    // switch OE control pins back to output (see note above)
-    // note that GP8 (RD) has been set to "input" by the "out" above too
+    // switch OE control pins back to output because the out above has swítched them to input
+    // From the official documantation:
+    /*A 32-bit value is written to Destination: the lower Bit count bits come from the OSR, 
+    and the remainder are zeroes. */
     set pindirs, 0b11 [2]   ; GP9, GP10 outputs (bits 0, 1)
     set pins, 0b00          ; ADDR_OE low (0) (active), DATA_OE low (0) (inactive)
     nop [25]                ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
@@ -60,7 +57,7 @@
 
     ; ------------------------------------
     ; Wait for GP6 to go low (active)
-    wait 0 pin RD_PIN       ; Wait until GP6 (pin 6) is low  
+    wait 0 pin RD_PIN       ; Wait until RD pin is low  
 
     ; ------------------------------------
     ; Note that everything below absolutely MUST happen within the time
@@ -95,8 +92,7 @@
     nop [25]                ; 26 cycles delay (26*3.968=103.168ns) for TXS0108E transition
     nop [25]                ; min. 200ns needed for enable
   
-
-    ; write to data bus
+    ; write to z80 data bus
     mov osr, ~null              ; switch pindirs to output (1)
     out pindirs,8
    
@@ -104,7 +100,7 @@
     out pins, NUM_BUS_PINS      ; write to pins from OSR
 
     ; ------------------------------------
-    ; Wait until GP6 (pin 6) goes high: Z80 has completed it's read
+    ; Wait until RD pin goes high again: Z80 has completed it's read 
     wait 1 pin RD_PIN           
 
     mov osr, null               ; revert pindirs to input (0)
@@ -139,6 +135,13 @@ void zproc_program_init(PIO pio, uint sm, uint offset) {
         gpio_set_pulls(i, false, true); // Enable pull-down, disable pull-up
     }
 
+    // Configure RD pin (input)
+    // pio, sm, basepin, numpins, is_out
+    pio_gpio_init(pio, zproc_RD_PIN);
+    pio_gpio_init(pio, zproc_WR_PIN);
+    //gpio_set_pulls(zproc_RD_PIN, false, true); // Enable pull-down, disable pull-up
+    pio_sm_set_consecutive_pindirs(pio, sm, zproc_RD_PIN, 2, false);    // false = 0 = input
+
     // Sets up state machine and wrap target. This function is automatically
     // generated in zproc.pio.h.
     pio_sm_config c = zproc_program_get_default_config(offset);
@@ -157,11 +160,6 @@ void zproc_program_init(PIO pio, uint sm, uint offset) {
     // Set shift direction for ISR & OSR
     sm_config_set_in_shift(&c, false, false, 32);    // ISR left shift, auto push after 8 bits
     sm_config_set_out_shift(&c, false, false, 32);   // OSR left shift, auto pull after 8 bits
-
-    // Configure GP0-GP7 as inputs initially
-    // NOTE: replaced with code in the pio asm program
-    // pio, sm, basepin, numpins, is_out
-    // pio_sm_set_consecutive_pindirs(pio, sm, 0, zproc_NUM_BUS_PINS, false);    // false = 0 = input
     
     // Load configuration and jump to start of the program
     pio_sm_init(pio, sm, offset, &c);

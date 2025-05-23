@@ -7,7 +7,7 @@
 #include "conio.h"
 #include "besciifont.h"
 
-extern uint8_t FRAMEBUF[];
+extern uint8_t FRAMEBUF[];		// defined in main.c
 
 
 // this basically is our "character screen": 40x30 at 320x240 pixel resolution when using an 8x8 font
