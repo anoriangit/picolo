@@ -97,9 +97,6 @@ pico_generate_pio_header(${PROJECT_NAME}
 pico_generate_pio_header(${PROJECT_NAME}  
         ${CMAKE_CURRENT_LIST_DIR}/zproc.pio
 )
-pico_generate_pio_header(${PROJECT_NAME}  
-        ${CMAKE_CURRENT_LIST_DIR}/z80_ram.pio
-)
 
 # Modify the below lines to enable/disable output over UART/USB
 # disable UART: we need every pin we can get
