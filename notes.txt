@@ -1,0 +1,21 @@
+
+*******************************************************************************
+* Z80 READ cycle
+*******************************************************************************
+
+Design:
+    - pio state machine processes Z80 RD signal 
+    - two chained DMA channels move the data around
+    - limited to address lines a0-a7, hence 256 bytes of memory are simulated
+
+Flow:
+    - Z80 read goes active (RD pin low)
+    - ISR (left shift) gets initialised with high order 24 bits of SRAM address
+    - pio program shifts bus pins into ISR, completing the address, and pushes to RX fifo
+    - attached DMA channel (read_addr_dma) triggers
+    - addr_read_dma writes address to the read trigger of DMA channel read_ram_dma
+    - DMA channel read_ram_dma triggers, reads one byte from SRAM at address and pushes to TX fifo
+    - pio program pulls data byte and pushes it to data bus
+    - rinse & repeat
+
+
