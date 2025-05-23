@@ -30,4 +30,6 @@ void CharacterDisplayScrollDownRow(int r);
 void CharacterDisplayScrollDownRange(int start_r, int end_r);
 void CharacterDisplayScrollUpRange(int start_r, int end_r);
 
+char *DisplayGetCharbuf();
+
 // display.h

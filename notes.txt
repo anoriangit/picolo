@@ -18,3 +18,25 @@ Flow:
     - pio program pulls data byte and shifts it out to data bus
     - pio program waits for RD to go inactive (high), signalling that Z80 has completed its read cycle
     - rinse & repeat
+
+*******************************************************************************
+* Z80 WRITE cycle
+*******************************************************************************
+
+Design:
+    - pio state machine processes Z80 WR signal 
+    - two chained DMA channels move the data around
+    - limited to address lines a0-a7, hence 256 bytes of memory are simulated
+
+Flow:
+    - Z80 write goes active (WR pin low)
+    - ISR (left shift) gets initialised with high order 24 bits of SRAM address
+    - pio program shifts bus pins into ISR, completing the address, and pushes to RX fifo
+    - attached DMA channel (read_addr_w_dma) triggers
+    - read_addr_w_dma writes the address to the write address (not the trigger!) of DMA channel write_ram_dma
+    - pio disables ADDR_OE, enables DATA_OE
+    - pio reads bus pins (Z80 data bus) into the ISR
+    - pio pushes ISR to rx fifo which in turn triggers
+    - DMA channel write_ram_dma: dma writes one byte to SRAM at injected address
+    - pio program waits for WR to go inactive (high), signalling that Z80 has completed its write cycle
+    - rinse & repeat

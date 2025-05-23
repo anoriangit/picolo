@@ -17,7 +17,8 @@
 #include "conio.h"
 #include "shell.h"
 #include "ztick.pio.h"
-#include "zproc.pio.h"
+#include "zproc_read.pio.h"
+#include "zproc_write.pio.h"
 
 
 #ifndef DMA_IRQ_PRIORITY
@@ -29,7 +30,6 @@
 #endif
 
 
-
 uint ztick_sm;
 
 // Z80 clock ticking
@@ -39,7 +39,7 @@ int start_z80(float tick_freq) {
 	static const uint clock_pin = 28;
 
 	// Choose PIO instance (0 or 1)
-    PIO pio = pio0;
+    PIO pio = pio1;
 
     // Get first free state machine in PIO 1
     ztick_sm = pio_claim_unused_sm(pio, true);
@@ -71,32 +71,172 @@ int start_z80(float tick_freq) {
 
 }
 
-PIO z80_pio;
-uint z80_sm;
+PIO z80_read_pio;
+PIO z80_write_pio;
+
+// Z80 read and write state machines
+uint z80_read_sm;
+uint z80_write_sm;
+
+// Z80 read cycle dma channels
 int read_addr_dma = -1;
 int read_ram_dma = -1;
 
+// Z80 write cycle dma channels
+int read_addr_w_dma = -1;
+int write_ram_dma = -1;
+
+// Simulated RAM
 #define SRAM_SIZE 256
 // Align SRAM on 256-byte (8-bit) boundary
 uint8_t SRAM[SRAM_SIZE] __attribute__((aligned(256)));
+uint32_t data_buffer; // Buffer for dma write data
 
 
-void __not_in_flash_func(dma_irq_handler_address)(void) {
+void __not_in_flash_func(z80_read_irq_handler)(void) {
 
-	// Clear the interrupt request for the dma channel
     // Clear the interrupt request.
-    // dma_hw->ints1 = 1u << read_ram_dma;
-	pio_interrupt_clear(z80_pio, 0);
+	pio_interrupt_clear(z80_read_pio, 0);
+
+#if 1
+    uint32_t addr = (uint32_t)dma_hw->ch[read_ram_dma].al3_read_addr_trig;
+    Con_printf("Z80 read:%u\n", addr&0x000000ff);
+#endif
+
+    /* grok version
+    Neither the check for the interrupt no. (we are an exclusive handler)
+    nor the fifo empty check (we are triggered from an irq statement in pio)
+    are needed right now. 
+    
+    if (pio_interrupt_get(pio, 0)) {
+        pio_interrupt_clear(pio, 0);
+        if (!pio_sm_is_rx_fifo_empty(pio, sm_read)) {
+            uint32_t addr = pio_sm_get(pio, sm_read) & 0xFF;
+            printf("IRQ Read - Addr: 0x%02x\n", addr);
+        }
+    } */
+
+}
+
+void __not_in_flash_func(z80_write_irq_handler)(void) {
+
+    // Clear the interrupt request.
+	pio_interrupt_clear(z80_write_pio, 0);
 
     uint32_t addr = (uint32_t)dma_hw->ch[read_ram_dma].al3_read_addr_trig;
-    // uint16_t value = *((uint16_t *)addr);
-    // DPRINTF("DMA ADDR: $%x, VALUE: $%x\n", addr, value);
+    Con_printf("Z80 write:%u\n", addr&0x000000ff);
+}
 
-    Con_printf("PIO IRQ: SRAM addr:%u\n", addr&0x000000ff);
-    //Con_printf(".");
+int setup_dma() {
 
-    // Restart the DMA
-    //    dma_channel_start(1);
+    // DMA channels for Z80 READ
+	read_addr_dma = dma_claim_unused_channel(true);
+   	Con_printf("DMA read_addr: %d\n", read_addr_dma);
+    if (read_addr_dma == -1) {
+        Con_printf("DMA channel error read_addr\n");
+        return -1;
+    }
+    read_ram_dma = dma_claim_unused_channel(true);
+   	Con_printf("DMA read_ram: %d\n", read_ram_dma);
+    if (read_ram_dma == -1) {
+        Con_printf("DMA channel error read_ram\n");
+        return -1;
+    }
+
+    // DMA channels for Z80 WRITE
+   	read_addr_w_dma = dma_claim_unused_channel(true);
+   	Con_printf("DMA read_addr_w: %d\n", read_addr_w_dma);
+    if (read_addr_w_dma == -1) {
+        Con_printf("DMA channel error read_addr_w\n");
+        return -1;
+    }
+    write_ram_dma = dma_claim_unused_channel(true);
+   	Con_printf("DMA write_ram: %d\n", write_ram_dma);
+    if (write_ram_dma == -1) {
+        Con_printf("DMA channel error read_ram\n");
+        return -1;
+    }
+
+    // DMA configuration for Z80 READ
+
+    dma_channel_config cdmaReadRam = dma_channel_get_default_config(read_ram_dma);
+    channel_config_set_transfer_data_size(&cdmaReadRam, DMA_SIZE_8);
+    channel_config_set_read_increment(&cdmaReadRam, false);
+    channel_config_set_write_increment(&cdmaReadRam, false);
+    channel_config_set_dreq(&cdmaReadRam, pio_get_dreq(z80_read_pio, z80_read_sm, true)); // dreq true=send to sm, false=read from sm
+    channel_config_set_chain_to(&cdmaReadRam, read_addr_dma);
+
+	dma_channel_configure(
+        read_ram_dma,
+        &cdmaReadRam,
+        &z80_read_pio->txf[z80_read_sm],		// write to
+        SRAM,						// read from: this is provided by the chained read addr channel
+        1,							// transfer count
+        false
+	); 
+
+    // Read ADDRESS dma: the address to read from the simulated RAM is obtained from the FIFO
+    // and injected into the read address trigger register of the lookup data DMA channel
+    // chained.
+    dma_channel_config cdmaReadAddr = dma_channel_get_default_config(read_addr_dma);
+    channel_config_set_transfer_data_size(&cdmaReadAddr, DMA_SIZE_32);
+    channel_config_set_read_increment(&cdmaReadAddr, false);
+    channel_config_set_write_increment(&cdmaReadAddr, false);
+    channel_config_set_dreq(&cdmaReadAddr, pio_get_dreq(z80_read_pio, z80_read_sm, false));
+    channel_config_set_chain_to(&cdmaReadAddr, read_ram_dma);
+
+	dma_channel_configure(
+        read_addr_dma,
+        &cdmaReadAddr,
+        &dma_hw->ch[read_ram_dma].al3_read_addr_trig,	// write to
+        &z80_read_pio->rxf[z80_read_sm],						// read from
+        1,												// transfers count
+        true
+	);
+
+    // ------------------------------------------------------------------------
+    // DMA configuration for Z80 WRITE
+
+    // Write RAM dma: the address of the data to read is injected from the
+    // chained previous DMA channel (read_addr_dma) into the read address trigger register.
+    // This DMA does the lookup and pushes the 8 bit result into the TX FIFO
+
+    dma_channel_config cdmaWriteRam = dma_channel_get_default_config(write_ram_dma);
+    channel_config_set_transfer_data_size(&cdmaWriteRam, DMA_SIZE_8);
+    channel_config_set_read_increment(&cdmaWriteRam, false);
+    channel_config_set_write_increment(&cdmaWriteRam, false);
+    channel_config_set_dreq(&cdmaWriteRam, pio_get_dreq(z80_write_pio, z80_write_sm, false)); // dreq true=send to sm, false=read from sm
+    channel_config_set_chain_to(&cdmaWriteRam, read_addr_w_dma);
+
+	dma_channel_configure(
+        write_ram_dma,              // dma channel
+        &cdmaWriteRam,              // config structure
+        SRAM,                       // write to: actual address injected by read_addr_w
+        &z80_write_pio->rxf[z80_write_sm],// read from: rx fifo (also trigger for channel as per dreq)
+        1,							// transfer count
+        false                       // don't enable yet
+	); 
+
+    // Read ADDRESS for write dma: the address to write to inside the simulated RAM is obtained from the FIFO
+    // and injected into the read address trigger register of the lookup data DMA channel chained.
+    dma_channel_config cdmaReadAddrW = dma_channel_get_default_config(read_addr_w_dma);
+    channel_config_set_transfer_data_size(&cdmaReadAddrW, DMA_SIZE_32);
+    channel_config_set_read_increment(&cdmaReadAddrW, false);
+    channel_config_set_write_increment(&cdmaReadAddrW, false);
+    channel_config_set_dreq(&cdmaReadAddrW, pio_get_dreq(z80_write_pio, z80_write_sm, false));
+    channel_config_set_chain_to(&cdmaWriteRam, write_ram_dma);
+
+    // grok: &dma_hw->ch[chan_write_data].al3_write_addr_trig, &pio->rxf[sm_write], 1, false);
+	dma_channel_configure(
+        read_addr_w_dma,                                // dma channel
+        &cdmaReadAddrW,                                 // config struct
+        &dma_hw->ch[write_ram_dma].al2_write_addr_trig, // write to
+        &z80_write_pio->rxf[z80_write_sm],					// read from
+        1,												// transfers count
+        true                                            // enable
+	);
+ 
+    return 0;
 }
 
 int process_z80() {
@@ -108,111 +248,72 @@ int process_z80() {
 	}
 
 	// Choose PIO instance and claim a state machine
-    z80_pio = pio1;
-    z80_sm = pio_claim_unused_sm(z80_pio, true);
-	Con_printf("zproc_sm: %d\n", z80_sm);
+    z80_read_pio = pio1;
+    z80_write_pio = pio0;
+    
+    z80_read_sm = pio_claim_unused_sm(z80_read_pio, true);
+	Con_printf("zproc_read_sm: %d\n", z80_read_sm);
+    z80_write_sm = pio_claim_unused_sm(z80_write_pio, true);
+	Con_printf("zproc_write_sm: %d\n", z80_write_sm);
 
-    // Load the PIO program
-    int offset = pio_add_program(z80_pio, &zproc_program);
-	Con_printf("zproc program offset: %d\n", offset);
+    // Load and initialize the READ PIO program
+    int offset = pio_add_program(z80_read_pio, &zproc_read_program);
+	if(offset >= 0)
+		Con_printf("zproc_read program offset: %d\n", offset);
+	else
+		return offset;
 
-    // Initialize the PIO state machine
-    zproc_program_init(z80_pio, z80_sm, offset);
+    zproc_read_program_init(z80_read_pio, z80_read_sm, offset);
+
+    // Load and initialize the WRITE PIO program
+    // NOTE: the init() below totally messes up the read sm
+    // cant do this!
+#if 1
+    offset = pio_add_program(z80_write_pio, &zproc_write_program);
+	if(offset >= 0)
+		Con_printf("zproc_write program offset: %d\n", offset);
+	else
+		return offset;
+
+    zproc_write_program_init(z80_write_pio, z80_write_sm, offset);
+#endif
 
     // Need to clear _input shift counter_, as well as FIFO, because there may be
     // partial ISR contents left over from a previous run. sm_restart does this.
-    pio_sm_clear_fifos(z80_pio, z80_sm);
-    pio_sm_restart(z80_pio, z80_sm);
+    // NOTE: not sure about this?!?
+    //pio_sm_clear_fifos(z80_pio, z80_read_sm);
+    //pio_sm_restart(z80_pio, z80_read_sm);
  	
-    // DMA
-    // Claim the first available DMA channel for read_addr channel
-	read_addr_dma = dma_claim_unused_channel(true);
-   	Con_printf("DMA read_addr: %d\n", read_addr_dma);
-    if (read_addr_dma == -1) {
-        Con_printf("DMA channel error read_addr\n");
+    if(setup_dma() != 0) {
+        Con_printf("DMA setup error!\n");
         return -1;
     }
 
-    // Claim another available DMA channel for RAM lookup channel
-    read_ram_dma = dma_claim_unused_channel(true);
-   	Con_printf("DMA read_ram: %d\n", read_ram_dma);
-    if (read_ram_dma == -1) {
-        Con_printf("DMA channel error read_ram\n");
-        return -1;
-    }
+    // Get READ SM up and running 
+    // push 24 most significant bits of the base address of SRAM
+	pio_sm_put(z80_read_pio, z80_read_sm, (uintptr_t) SRAM>>8);
+    pio_sm_set_enabled(z80_read_pio, z80_read_sm, true);
 
-    // DMA configuration
-    // Lookup RAM dma: the address of the data to read is injected from the
-    // chained previous DMA channel (read_addr_dma) into the read address trigger register.
-    // This DMA does the lookup and pushes the 8 bit result into the TX FIFO
-
-    dma_channel_config cdmaLookup = dma_channel_get_default_config(read_ram_dma);
-    channel_config_set_transfer_data_size(&cdmaLookup, DMA_SIZE_8);
-    channel_config_set_read_increment(&cdmaLookup, false);
-    channel_config_set_write_increment(&cdmaLookup, false);
-    channel_config_set_dreq(&cdmaLookup, pio_get_dreq(z80_pio, z80_sm, true)); // dreq true=send to sm, false=read from sm
-    channel_config_set_chain_to(&cdmaLookup, read_addr_dma);
-
-	/*
-	Configure all DMA parameters and optionally start transfer.
-	static void dma_channel_configure (
-		uint channel, 
-		const dma_channel_config *config, 
-		volatile void *write_addr, 
-		const volatile void *read_addr, 
-		uint transfer_count, 
-		bool trigger)
-	*/
-
-	dma_channel_configure(
-        read_ram_dma,
-        &cdmaLookup,
-        &z80_pio->txf[z80_sm],		// write to
-        SRAM,						// read from: this is provided by the chained read addr channel
-        1,							// transfer count
-        false
-	); 
-
-    // Read ADDRESS dma: the address to read from the simulated RAM is obtained from the FIFO
-    // and injected into the read address trigger register of the lookup data DMA channel
-    // chained.
-    dma_channel_config cdma = dma_channel_get_default_config(read_addr_dma);
-    channel_config_set_transfer_data_size(&cdma, DMA_SIZE_32);
-    channel_config_set_read_increment(&cdma, false);
-    channel_config_set_write_increment(&cdma, false);
-    channel_config_set_dreq(&cdma, pio_get_dreq(z80_pio, z80_sm, false));
-    channel_config_set_chain_to(&cdmaLookup, read_ram_dma);
-
-	dma_channel_configure(
-        read_addr_dma,
-        &cdma,
-        &dma_hw->ch[read_ram_dma].al3_read_addr_trig,	// write to
-        &z80_pio->rxf[z80_sm],							// read from
-        1,												// transfers count
-        true
-	);
-
-	// push 24 most significant bits of the base address of SRAM
-	pio_sm_put(z80_pio, z80_sm, (uintptr_t) SRAM>>8);
-
-    // Start running our PIO program in the state machine
-    pio_sm_set_enabled(z80_pio, z80_sm, true);
-
-	// DEBUG: irq handler for read_ram_dma
-	// can not get this to work at all :(
-#if 0
-    irq_add_shared_handler(DMA_IRQ_TO_USE, dma_irq_handler_address, DMA_IRQ_PRIORITY);
-    irq_set_enabled(dma_get_irq_num(DMA_IRQ_TO_USE), true);
-	dma_irqn_set_channel_enabled(DMA_IRQ_TO_USE, read_ram_dma, true);
-#endif
+    // Get WRITE SM up and running 
+    // push 24 most significant bits of the base address of SRAM
+	//pio_sm_put(z80_write_pio, z80_write_sm, (uintptr_t) SRAM>>8);
+    //pio_sm_set_enabled(z80_write_pio, z80_write_sm, true);
 
 #if 1
-	// try a pio irq
-	pio_set_irq0_source_mask_enabled(z80_pio, 0b0000111100000000 /*3840*/, true);	// enables all 4 irq
-    irq_set_exclusive_handler(PIO1_IRQ_0, dma_irq_handler_address);
+	// pio irq times 2 for debugging
+    // READ (pio1)
+    pio_set_irq0_source_mask_enabled(z80_read_pio, 0b0000111100000000 /*3840*/, true);	// enables all 4 irq
+    irq_set_exclusive_handler(PIO1_IRQ_0, z80_read_irq_handler);
     //pio_set_irqn_source_enabled(z80_pio, PIO_IRQ_TO_USE, pio_get_rx_fifo_not_empty_interrupt_source(z80_pio), true);
 	irq_set_enabled(PIO1_IRQ_0, true);
-#endif
+
+    // WRITE (pio0)
+	pio_set_irq0_source_mask_enabled(z80_write_pio, 0b0000111100000000 /*3840*/, true);	// enables all 4 irq
+    irq_set_exclusive_handler(PIO0_IRQ_0, z80_write_irq_handler);
+    //pio_set_irqn_source_enabled(z80_write_pio, PIO_IRQ_TO_USE, pio_get_rx_fifo_not_empty_interrupt_source(z80_pio), true);
+	irq_set_enabled(PIO0_IRQ_0, true);
+
+   #endif
 
 	return 0;
 }

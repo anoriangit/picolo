@@ -1,0 +1,170 @@
+
+;
+; GP0-GP7 are connected to the Z80 address lines A0-A7 (through a transceiver)
+; 
+
+
+; Transceiver Information
+; SN74LVC245A used for 5V -> 3.3V down translation
+; runs at VCC 3.3V
+; Pin propagation time at VCC: max 8.3 ns
+; OE Enable at VCC: 11 ns
+; OE Disable at VCC: 9.5 ns
+
+; TXS0108E
+; OE Enable: 200 ns
+; OE Disable: 400 ns
+
+
+; timing at 252MHz
+; wait: 1 cycle = 3.968 ns
+; in: 1 cycle = 3.968 ns
+; push: 1 cycle = 3.968 ns
+; wrap: 0 cycles
+; Total per loop (without wait blocking): 3×3.968=11.904
+; If wait blocks, add the blocking time (in multiples of 3.968 ns based on how many cycles GP6 is low).
+; DMA: each transfer needs around 100 ns
+
+.program zproc_write
+
+.define public NUM_BUS_PINS    8    ; (0-7)
+.define public NUM_PINS        11   ; (0-10)
+
+.define public RD_PIN      27
+.define public WR_PIN      26
+.define public ADDR_OE_PIN 9     ; GP9 for address transceiver OE
+.define public DATA_OE_PIN 10    ; GP10 for data transceiver OE
+
+; This is used to process data to&from the Z80
+
+    ; get the SRAM base address into x
+    pull
+    mov x, osr
+   
+    ; switch bus pins to input (0)
+    mov osr, null
+    out pindirs, NUM_BUS_PINS
+
+    // switch OE control pins back to output because the out above has swítched them to input
+    // From the official documantation:
+    /*A 32-bit value is written to Destination: the lower Bit count bits come from the OSR, 
+    and the remainder are zeroes. */
+    set pindirs, 0b11 [2]   ; GP9, GP10 outputs (bits 0, 1)
+    set pins, 0b00          ; ADDR_OE low (0) (active), DATA_OE low (0) (inactive)
+    nop [25]                ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
+
+    .wrap_target
+
+    ; ------------------------------------
+    ; Wait for WR to go low (active)
+    wait 0 pin WR_PIN       ; Wait until RD pin is low  
+
+    ; ------------------------------------
+    ; Note that everything below absolutely MUST happen within the time
+    ; that the Z80 needs before it will request  the next byte
+    ; The minimum timespan is 4 Z80 cycles
+    ; at 4MHz the Z80 needs 1usec (1000ns) for 4 cycles
+    ; while the PIO (at 252MHz) requires 3.968 ns / operation
+    ; ==> we can process ~ 252 pio operations during one Z80 cycle
+    ; Problem: The TXS0108E needs extremely long for enable/disable
+    ; as long as that is in use 200+400=600ns (60% of our budget) 
+    ; are required for OE on that transceiver alone
+
+    ; ------------------------------------
+    ; Read GP0-GP7 states into ISR (Input Shift Register)
+    ; NOTE: we should not have to add a delay for transceiver propagation
+    ; here because the RD signal passes through the same type of transceiver too
+    ; For stability reasons though (two transceivers will never be *exactly* the same)
+    ; we add a small delay anyway
+    ;nop [7]                    ; 3*3.698ns delay    
+    mov isr, x                  ; restore the base address (gets shifted left 8 by the in below)
+    in pins, NUM_BUS_PINS       ; shift pins into ISR (now holds complete 32 bit address)
+    push                        ; push the address value to the RX FIFO where dma will pick it up
+
+    irq 0                       ; trigger debug irq
+
+    ; ------------------------------------
+    ; Switch transceivers to data output
+    ; wait for OE to propagate (3 ticks delay is enough for SN but not for TSX)
+    ;set pindirs, 0b11 [2]   ; GP9, GP10 outputs (bits 0, 1)
+    set pins, 0b11          ; ADDR_OE high (1) (inactive), DATA_OE high (1) (active)
+    nop [25]                ; 26 cycles delay (26*3.968=103.168ns) for TXS0108E transition
+    nop [25]                ; min. 200ns needed for enable
+  
+    ; read z80 data bus
+    in pins, NUM_BUS_PINS   ; shift one byte from Z80 data bus to ISR
+    push                    ; push to RX fifo (dma will write to SRAM address injected above)
+
+    ; ------------------------------------
+    ; Wait until WR pin goes high again: Z80 has completed it's write cycle
+    wait 1 pin WR_PIN           
+
+    mov osr, null               ; revert bus pindirs to input (0)
+    out pindirs,8
+
+    ; Switch transceivers back to addr:active, data: inactive  
+    ;set pindirs, 0b11   ; GP9, GP10 outputs (bits 0, 1)
+    set pins, 0b00      ; ADDR_OE low (0) active, DATA_OE low (0) inactive
+
+    ; this is probably not needed because the Z80 will need longer than
+    ; this before it reaches its next RD/WR cycle
+    nop [25]                ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
+    nop [25]                ; min. 400ns needed for disable
+    nop [25]
+    nop [25]
+
+
+    .wrap
+
+
+% c-sdk {
+
+// Helper function (for use in C program) to initialize this PIO program
+void zproc_write_program_init(PIO pio, uint sm, uint offset) {
+
+    // this pin configuration is the same as in zproc_read
+    // doing it here again is redundant and potentially will mess with zproc_read 
+    // should that already be active    
+#if 0
+
+    // Initialize all our pins
+    // NOTE: pio_gpio_init(), from the official docs:
+    // Note that this is not necessary for a state machine to be able to read the 
+    // input value from a GPIO, but only for it to set the output value or output enable.
+    for (uint i = 0; i < zproc_write_NUM_PINS; i++) {
+        pio_gpio_init(pio, i);
+        gpio_set_pulls(i, false, true); // Enable pull-down, disable pull-up
+    }
+
+    // Configure RD pin (input)
+    pio_gpio_init(pio, zproc_write_RD_PIN);
+    pio_gpio_init(pio, zproc_write_WR_PIN);
+    //gpio_set_pulls(zproc_write_RD_PIN, false, true); // Enable pull-down, disable pull-up
+    // pio, sm, basepin, numpins, is_out
+    pio_sm_set_consecutive_pindirs(pio, sm, zproc_write_RD_PIN, 2, false);    // false = 0 = input
+#endif
+
+    // Sets up state machine and wrap target. This function is automatically
+    // generated in zproc.pio.h.
+    pio_sm_config c = zproc_write_program_get_default_config(offset);
+
+    // input pins (GP0-GP7) setup
+    sm_config_set_in_pins(&c, 0);           // Start at GP0
+    sm_config_set_in_pin_count(&c, 8);      // GP0-GP7 (8 pins)
+
+    // output pins setup (overlaps in pins)
+    sm_config_set_out_pins(&c, 0, zproc_write_NUM_BUS_PINS);
+
+    // define "set pins" (pins affected by the "set" operation)
+    // two pins starting at ADDR_OE_PIN
+    sm_config_set_set_pins(&c, zproc_write_ADDR_OE_PIN, 2);
+
+    // Set shift direction for ISR & OSR
+    sm_config_set_in_shift(&c, false, false, 32);    // ISR left shift, auto push after 8 bits
+    sm_config_set_out_shift(&c, false, false, 32);   // OSR left shift, auto pull after 8 bits
+    
+    // Load configuration and jump to start of the program
+    pio_sm_init(pio, sm, offset, &c);
+}
+
+%}

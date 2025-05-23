@@ -26,6 +26,10 @@ void DisplayOpen() {
 	ClearTextDisplay();
 }
 
+char *DisplayGetCharbuf() {
+	return charbuf;
+}
+
 // Put a character into our character display buffer at row,col
 // NOTE: this does no boundaries checking whatsoever
 void PutCharacter(int c, int row, int col) {

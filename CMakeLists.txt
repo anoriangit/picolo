@@ -83,7 +83,8 @@ add_executable(picolo
     ed_status.c
     ed_copypaste.c
     ed.h
-    zproc.pio.h
+    zproc_read.pio.h
+    zproc_write.pio.h
     ztick.pio.h
     )
 
@@ -95,7 +96,10 @@ pico_generate_pio_header(${PROJECT_NAME}
         ${CMAKE_CURRENT_LIST_DIR}/ztick.pio
 )
 pico_generate_pio_header(${PROJECT_NAME}  
-        ${CMAKE_CURRENT_LIST_DIR}/zproc.pio
+        ${CMAKE_CURRENT_LIST_DIR}/zproc_read.pio
+)
+pico_generate_pio_header(${PROJECT_NAME}  
+        ${CMAKE_CURRENT_LIST_DIR}/zproc_write.pio
 )
 
 # Modify the below lines to enable/disable output over UART/USB

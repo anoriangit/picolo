@@ -122,6 +122,12 @@ uint8_t clock_on = 0;
 
 // 50hz regular updates
 bool display_timer_callback(__unused struct repeating_timer *t) {
+
+	// TEST TEST TEST: Z80
+	// copy the last 40 bytes of the Z80 SRAM to the top most line 
+	// of the display systems character display buffer
+	memcpy((void*)DisplayGetCharbuf(), (void*)&SRAM[216], 40);
+
     //printf("Repeat at %lld\n", time_us_64());
 	for(int scanline = 0; scanline < D_FRAME_HEIGHT; scanline++)
 		RenderTextScanline(scanline);
