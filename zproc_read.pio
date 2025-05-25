@@ -25,15 +25,30 @@
 ; If wait blocks, add the blocking time (in multiples of 3.968 ns based on how many cycles GP6 is low).
 ; DMA: each transfer needs around 100 ns
 
+    ; ------------------------------------
+    ; Note that everything in the loop below absolutely MUST happen within the time
+    ; that the Z80 needs before it will request  the next byte
+    ; The minimum timespan is 4 Z80 cycles
+    ; at 4MHz the Z80 needs 1usec (1000ns) for 4 cycles
+    ; while the PIO (at 252MHz) requires 3.968 ns / operation
+    ; ==> we can process ~ 252 pio operations during one Z80 cycle
+    ; Problem: The TXS0108E needs extremely long for enable/disable
+    ; as long as that is in use 200+400=600ns (60% of our budget) 
+    ; are required for OE on that transceiver alone
+
+
 .program zproc_read
 
-.define public NUM_BUS_PINS    8    ; (0-7)
-.define public NUM_PINS        11   ; (0-10)
+.define public NUM_BUS_PINS    8    
+.define public NUM_PINS        10   
+
+.define public BUS_PIN_0   0
+.define public ADDR_OE_PIN 8    ; address transceiver OE
+.define public DATA_OE_PIN 9    ; data transceiver OE
 
 .define public RD_PIN      27
 .define public WR_PIN      26
-.define public ADDR_OE_PIN 9     ; GP9 for address transceiver OE
-.define public DATA_OE_PIN 10    ; GP10 for data transceiver OE
+
 
 ; This is used to process data to&from the Z80
 
@@ -52,24 +67,11 @@
     set pindirs, 0b11 [2]   ; GP9, GP10 outputs (bits 0, 1)
     set pins, 0b00 [26]     ; ADDR_OE low (0) (active), DATA_OE low (0) (inactive)
                             ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
-
     .wrap_target
 
     ; ------------------------------------
     ; Wait for GP6 to go low (active)
     wait 0 pin RD_PIN       ; Wait until RD pin is low  
-
-    ; ------------------------------------
-    ; Note that everything below absolutely MUST happen within the time
-    ; that the Z80 needs before it will request  the next byte
-    ; The minimum timespan is 4 Z80 cycles
-    ; at 4MHz the Z80 needs 1usec (1000ns) for 4 cycles
-    ; while the PIO (at 252MHz) requires 3.968 ns / operation
-    ; ==> we can process ~ 252 pio operations during one Z80 cycle
-    ; Problem: The TXS0108E needs extremely long for enable/disable
-    ; as long as that is in use 200+400=600ns (60% of our budget) 
-    ; are required for OE on that transceiver alone
-
 
     ; ------------------------------------
     ; Read GP0-GP7 states into ISR (Input Shift Register)
@@ -82,20 +84,22 @@
     in pins, NUM_BUS_PINS       ; shift pins into ISR
     push                        ; push the value read to the RX FIFO
 
+    ; ------------------------------------
+    ; Switch transceivers to data output
+    ; need to wait for OE to propagate (3 ticks delay is enough for SN but not for TSX)
+    set pins, 0b11              ; ADDR_OE high (1) (inactive), DATA_OE high (1) (active)
+    nop [25]                    ; 26 cycles delay (26*3.968=103.168ns) for TXS0108E transition
+    nop [25]                    ; we need > 200 ns for a safe enable of the TSX008E
+    nop [25]
+    
     irq 0
 
     ; ------------------------------------
-    ; Switch transceivers to data output
-    ; wait for OE to propagate (3 ticks delay is enough for SN but not for TSX)
-    set pins, 0b11 [26]     ; ADDR_OE high (1) (inactive), DATA_OE high (1) (active)
-    nop [25]                ; 26 cycles delay (26*3.968=103.168ns) for TXS0108E transition (min. 200ns needed for enable)
-  
     ; write to z80 data bus
     mov osr, ~null              ; switch pindirs to output (1)
-    out pindirs,8
-   
+    out pindirs,8 
     pull                        ; pull a 32 bit word from tx fifo into OSR
-    out pins, NUM_BUS_PINS      ; write to pins from OSR:
+    out pins, NUM_BUS_PINS      ; write to pins from OSR
 
     ; ------------------------------------
     ; Wait until RD pin goes high again: Z80 has completed it's read cycle
@@ -106,9 +110,8 @@
     out pindirs,8
 
     ; Switch transceivers back to addr:active, data: inactive  
-    ;set pindirs, 0b11   ; GP9, GP10 outputs (bits 0, 1)
+    ; Note: remember TSX safe disable is minimum 400 ns
     set pins, 0b00      ; ADDR_OE low (0) active, DATA_OE low (0) inactive
-
 
     ; this is probably not needed because the Z80 will need longer than
     ; this before it reaches its next RD cycle anyway
@@ -130,33 +133,31 @@ void zproc_read_program_init(PIO pio, uint sm, uint offset) {
     // NOTE: pio_gpio_init(), from the official docs:
     // Note that this is not necessary for a state machine to be able to read the 
     // input value from a GPIO, but only for it to set the output value or output enable.
-    for (uint i = 0; i < zproc_read_NUM_PINS; i++) {
+    for (uint i = zproc_read_BUS_PIN_0; i < zproc_read_BUS_PIN_0+zproc_read_NUM_PINS; i++) {
         pio_gpio_init(pio, i);
         gpio_set_pulls(i, false, true); // Enable pull-down, disable pull-up
     }
 
-    // Configure RD pin (input)
+    // Configure RD pin as input
     pio_gpio_init(pio, zproc_read_RD_PIN);
-    pio_gpio_init(pio, zproc_read_WR_PIN);
-    //gpio_set_pulls(zproc_read_RD_PIN, false, true); // Enable pull-down, disable pull-up
-    // pio, sm, basepin, numpins, is_out
-    pio_sm_set_consecutive_pindirs(pio, sm, zproc_read_RD_PIN, 2, false);    // false = 0 = input
-
+    pio_sm_set_consecutive_pindirs(pio, sm, zproc_read_RD_PIN, 1, false);    // false = 0 = input
+                                                                                                                                                     
     // Sets up state machine and wrap target. This function is automatically
     // generated in zproc.pio.h.
     pio_sm_config c = zproc_read_program_get_default_config(offset);
 
-    // input pins (GP0-GP7) setup
-    sm_config_set_in_pins(&c, 0);           // Start at GP0
-    sm_config_set_in_pin_count(&c, 8);      // GP0-GP7 (8 pins)
+    // BUS input pins setup
+    sm_config_set_in_pins(&c, zproc_read_BUS_PIN_0);
+    sm_config_set_in_pin_count(&c, zproc_read_NUM_BUS_PINS);
 
-    // output BUS pins setup (overlaps in pins)
-    sm_config_set_out_pins(&c, 0, zproc_read_NUM_BUS_PINS);
-    // pio, sm, basepin, numpins, is_out
-    pio_sm_set_consecutive_pindirs(pio, sm, 0, zproc_read_NUM_BUS_PINS, false);    // false = 0 = input
+    // output pins: BUS (overlaps in pins)
+    // NOTE: if the  OE control pins are set as out pins here
+    // they get included in the "out set" and every out operation
+    // will affect them to! Better control them using the "set set"
+    sm_config_set_out_pins(&c, zproc_read_BUS_PIN_0, zproc_read_NUM_BUS_PINS);
 
     // define "set pins" (pins affected by the "set" operation)
-    // two pins starting at ADDR_OE_PIN
+    // two control pins starting at ADDR_OE_PIN
     sm_config_set_set_pins(&c, zproc_read_ADDR_OE_PIN, 2);
 
     // Set shift direction for ISR & OSR

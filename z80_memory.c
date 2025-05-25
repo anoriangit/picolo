@@ -21,6 +21,11 @@
 #include "zproc_write.pio.h"
 
 
+#ifndef USE_CONIO
+#define Con_printf printf
+#endif
+
+
 #ifndef DMA_IRQ_PRIORITY
 #define DMA_IRQ_PRIORITY PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY
 #endif
@@ -36,7 +41,7 @@ uint ztick_sm;
 // Note that we are running this on PIO0 (which is also used by PICODVI)
 int start_z80(float tick_freq) {
 
-	static const uint clock_pin = 28;
+	static const uint clock_pin = 22;
 
 	// Choose PIO instance (0 or 1)
     PIO pio = pio1;
@@ -89,9 +94,14 @@ int write_ram_dma = -1;
 // Simulated RAM
 #define SRAM_SIZE 256
 // Align SRAM on 256-byte (8-bit) boundary
-uint8_t SRAM[SRAM_SIZE] __attribute__((aligned(256)));
-uint32_t data_buffer; // Buffer for dma write data
-
+uint8_t SRAM[SRAM_SIZE] __attribute__((aligned(256))) = {
+    0x21,0x0e,0x00,     // 0: ld hl, 14
+    0x11,0xd8,0x00,     // 3: ld de, 216
+    0x01,0x05,0x00,     // 6: ld bc, 5
+    0xed,0xb0,          // 9: ldir
+    0xc3,0x00,0x00,     // 11:jp 0
+    0x48,0x65,0x6c,0x6c,0x6f    // 14: .db "Hello"
+};
 
 void __not_in_flash_func(z80_read_irq_handler)(void) {
 
@@ -100,7 +110,7 @@ void __not_in_flash_func(z80_read_irq_handler)(void) {
 
 #if 1
     uint32_t addr = (uint32_t)dma_hw->ch[read_ram_dma].al3_read_addr_trig;
-    Con_printf("Z80 read:%u\n", addr&0x000000ff);
+    Con_printf("read:%03u:0x%02x\n", addr&0x000000ff, SRAM[addr&0x000000ff]);
 #endif
 
     /* grok version
@@ -118,14 +128,29 @@ void __not_in_flash_func(z80_read_irq_handler)(void) {
 
 }
 
+
 void __not_in_flash_func(z80_write_irq_handler)(void) {
 
     // Clear the interrupt request.
 	pio_interrupt_clear(z80_write_pio, 0);
 
-    uint32_t addr = (uint32_t)dma_hw->ch[read_ram_dma].al3_read_addr_trig;
-    Con_printf("Z80 write:%u\n", addr&0x000000ff);
+    uint32_t addr = (uint32_t)dma_hw->ch[write_ram_dma].al2_write_addr_trig;
+    uint8_t z_write_addr = addr&0x000000ff;
+    uint8_t z_data_byte = z80_write_pio->rxf[z80_write_sm]&0x000000ff;
+   
+    Con_printf("write:%u:0x%x\n", z_write_addr, z80_write_pio->rxf[z80_write_sm]);
 }
+
+/*
+void __not_in_flash_func(z80_write_irq1_handler)(void) {
+
+    // Clear the interrupt request.
+	pio_interrupt_clear(z80_write_pio, 1);
+
+    uint8_t z_data_byte = z80_write_pio->rxf[z80_write_sm]&0x000000ff;
+    Con_printf("write:%u:%u\n", z_write_addr, z_data_byte);
+}
+*/
 
 int setup_dma() {
 
@@ -189,7 +214,7 @@ int setup_dma() {
         read_addr_dma,
         &cdmaReadAddr,
         &dma_hw->ch[read_ram_dma].al3_read_addr_trig,	// write to
-        &z80_read_pio->rxf[z80_read_sm],						// read from
+        &z80_read_pio->rxf[z80_read_sm],				// read from
         1,												// transfers count
         true
 	);
@@ -200,7 +225,7 @@ int setup_dma() {
     // Write RAM dma: the address of the data to read is injected from the
     // chained previous DMA channel (read_addr_dma) into the read address trigger register.
     // This DMA does the lookup and pushes the 8 bit result into the TX FIFO
-
+#if 0
     dma_channel_config cdmaWriteRam = dma_channel_get_default_config(write_ram_dma);
     channel_config_set_transfer_data_size(&cdmaWriteRam, DMA_SIZE_8);
     channel_config_set_read_increment(&cdmaWriteRam, false);
@@ -231,21 +256,24 @@ int setup_dma() {
         read_addr_w_dma,                                // dma channel
         &cdmaReadAddrW,                                 // config struct
         &dma_hw->ch[write_ram_dma].al2_write_addr_trig, // write to
-        &z80_write_pio->rxf[z80_write_sm],					// read from
+        &z80_write_pio->rxf[z80_write_sm],				// read from
         1,												// transfers count
-        true                                            // enable
+        false                                           // enable
 	);
- 
+ #endif
     return 0;
 }
 
 int process_z80() {
 
     // Initialize SRAM with a contiguous sequence of "JR 6" relative jumps
+    //memset(SRAM,0,256);
+#if 0
     for (int i = 0; i < SRAM_SIZE; i+=2){ 
 		SRAM[i] = 0x18;
 		SRAM[i+1] = 0x6;
 	}
+#endif
 
 	// Choose PIO instance and claim a state machine
     z80_read_pio = pio1;
@@ -268,7 +296,7 @@ int process_z80() {
     // Load and initialize the WRITE PIO program
     // NOTE: the init() below totally messes up the read sm
     // cant do this!
-#if 1
+#if 0
     offset = pio_add_program(z80_write_pio, &zproc_write_program);
 	if(offset >= 0)
 		Con_printf("zproc_write program offset: %d\n", offset);
@@ -308,12 +336,11 @@ int process_z80() {
 	irq_set_enabled(PIO1_IRQ_0, true);
 
     // WRITE (pio0)
-	pio_set_irq0_source_mask_enabled(z80_write_pio, 0b0000111100000000 /*3840*/, true);	// enables all 4 irq
-    irq_set_exclusive_handler(PIO0_IRQ_0, z80_write_irq_handler);
-    //pio_set_irqn_source_enabled(z80_write_pio, PIO_IRQ_TO_USE, pio_get_rx_fifo_not_empty_interrupt_source(z80_pio), true);
-	irq_set_enabled(PIO0_IRQ_0, true);
+	//pio_set_irq0_source_mask_enabled(z80_write_pio, 0b0000111100000000 /*3840*/, true);	// enables all 4 irq
+    //irq_set_exclusive_handler(PIO0_IRQ_0, z80_write_irq_handler);
+	//irq_set_enabled(PIO0_IRQ_0, true);
 
-   #endif
+#endif
 
 	return 0;
 }

@@ -68,8 +68,8 @@ add_executable(picolo
     display.h
     conio.c
     conio.h
-    tusb_config.h
-    hid_app.c
+    #tusb_config.h
+    #hid_app.c
     cstream.c
     cstream.h
     shell.c
@@ -104,7 +104,7 @@ pico_generate_pio_header(${PROJECT_NAME}
 
 # Modify the below lines to enable/disable output over UART/USB
 # disable UART: we need every pin we can get
-pico_enable_stdio_uart(picolo 0)
+pico_enable_stdio_uart(picolo 1)
 pico_enable_stdio_usb(picolo 0)
 
 add_subdirectory(liblua)
@@ -118,7 +118,7 @@ target_compile_definitions(picolo PRIVATE
     # tglib
     CONIO_DEBUG_PRINT=1
     # tinyusb
-    CFG_TUSB_MCU=OPT_MCU_RP2040
+    #CFG_TUSB_MCU=OPT_MCU_RP2040
 
      # from colour terminal: not tested with graphics mode yet
 	#PICO_CORE1_STACK_SIZE=0x200
@@ -131,8 +131,8 @@ target_link_libraries(picolo
         pico_stdlib
         pico_multicore
         pico_util
-        tinyusb_host 
-        tinyusb_board       
+        #tinyusb_host 
+        #tinyusb_board       
         libdvi
         libsprite
         no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
@@ -144,9 +144,9 @@ target_include_directories(picolo PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}
   ${CMAKE_CURRENT_LIST_DIR}/.. # for our common lwipopts or any other standard includes, if required
   ${CMAKE_CURRENT_LIST_DIR}/liblua
-  ${PICO_SDK_PATH}/lib/tinyusb/hw
-  ${PICO_SDK_PATH}/lib/tinyusb/src
-  ${PICO_SDK_PATH}/lib/tinyusb/src/class/hid
+  #${PICO_SDK_PATH}/lib/tinyusb/hw
+  #${PICO_SDK_PATH}/lib/tinyusb/src
+  #${PICO_SDK_PATH}/lib/tinyusb/src/class/hid
 )
 
 # PicoDVI include directories

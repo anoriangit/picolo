@@ -14,9 +14,9 @@
 #include "hardware/dma.h"
 #include "pico/sem.h"
 
-// tinyusb
-#include "bsp/board.h"
-#include "tusb.h"
+// tinyusb (disabled)
+//#include "bsp/board.h"
+//#include "tusb.h"
 
 // picodvi
 #include "dvi.h"
@@ -48,7 +48,7 @@
 #include "z80_memory.h"
 
 
-#define START_DVI 1
+#define START_DVI 0
 
 // TMDS bit clock 252 MHz
 // DVDD 1.2V (1.1V seems ok too)
@@ -132,7 +132,7 @@ bool display_timer_callback(__unused struct repeating_timer *t) {
 	for(int scanline = 0; scanline < D_FRAME_HEIGHT; scanline++)
 		RenderTextScanline(scanline);
 
-   	tuh_task();
+   	// tinyusb disabled atm tuh_task();
 
 	if(auto_repeat_key && (framecount > auto_repeat_timer  + 30) && (framecount % 2)) {
 		ConStoreCharacter(auto_repeat_key);
@@ -155,7 +155,10 @@ int __not_in_flash("main") main() {
 
 	// not using uart (we need the pins :) )
 	//setup_default_uart();
-    //stdio_init_all();
+	// Set GPI28 as TX and GPI29 as RX for UART0
+    gpio_set_function(28, GPIO_FUNC_UART); // TX
+    gpio_set_function(19, GPIO_FUNC_UART); // RX
+    stdio_init_all();
 
 	// switch on system LED to indicate we are running
 	gpio_init(LED_PIN);
@@ -163,9 +166,9 @@ int __not_in_flash("main") main() {
 	gpio_put(LED_PIN, true);
 
 	// init tinyusb host stack on configured roothub port
-  	tusb_init();
- 	board_init();
-  	tuh_init(BOARD_TUH_RHPORT);
+  	//tusb_init();
+ 	//board_init();
+  	//tuh_init(BOARD_TUH_RHPORT);
 
 	// get PicoDVI up and running
 	//printf("Configuring DVI\n");
@@ -221,9 +224,9 @@ int __not_in_flash("main") main() {
 	int error = 0;
 	process_z80();
 
-	// 1000->35Hz (with 60 wait cycles in ztick.pio)
-	// 5000->124Hz, 10000->250Hz 
-	static const float tick_freq = 1000;		
+	// 1000->21Hz (with 60 wait cycles in ztick.pio)
+	// 5000->42Hz, 10000->80Hz 
+	static const float tick_freq = 5000;		
 	if(start_z80(tick_freq) < 0) {
 		Con_printf("Error starting Z80 clock\n");
 		error = 1;
@@ -234,6 +237,12 @@ int __not_in_flash("main") main() {
 	// main loop
 	while (1) {
 
+
+		uint32_t addr = pio_sm_get_blocking(z80_write_pio, z80_write_sm);
+		//pio_sm_clear_fifos (z80_write_pio, z80_write_sm);
+		uint32_t data = pio_sm_get_blocking(z80_write_pio, z80_write_sm);
+		Con_printf("write 0x%0x:0x%0x\n", addr, data);
+		
 #if 0
 
      	//pio_sm_set_consecutive_pindirs(z80_pio, z80_sm, 0, z80_ram_PIN_COUNT, false);
