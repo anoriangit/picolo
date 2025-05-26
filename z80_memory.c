@@ -34,6 +34,9 @@
 #define PIO_IRQ_PRIORITY PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY
 #endif
 
+#define Z80_RESET_PIN 21
+#define Z80_CLOCK_PIN 22
+
 
 uint ztick_sm;
 
@@ -41,7 +44,7 @@ uint ztick_sm;
 // Note that we are running this on PIO0 (which is also used by PICODVI)
 int start_z80(float tick_freq) {
 
-	static const uint clock_pin = 22;
+	static const uint clock_pin = Z80_CLOCK_PIN;
 
 	// Choose PIO instance (0 or 1)
     PIO pio = pio1;
@@ -70,9 +73,19 @@ int start_z80(float tick_freq) {
     // Initialize the program using the helper function in our .pio file
     ztick_program_init(pio, ztick_sm, offset, clock_pin, div);
 
+    // pull Z80 RESET high 
+    gpio_init(Z80_RESET_PIN);
+    gpio_set_dir(Z80_RESET_PIN, 1);     // out
+    gpio_put(Z80_RESET_PIN, 0);         // low
+
     // Start running our PIO program in the state machine
     pio_sm_set_enabled(pio, ztick_sm, true);
-	return 0;
+
+    // wait for some ticks so Z80 can reset
+    busy_wait_ms(100);
+    gpio_put(Z80_RESET_PIN, 1);         // high
+
+    return 0;
 
 }
 
@@ -309,8 +322,8 @@ int process_z80() {
     // Need to clear _input shift counter_, as well as FIFO, because there may be
     // partial ISR contents left over from a previous run. sm_restart does this.
     // NOTE: not sure about this?!?
-    //pio_sm_clear_fifos(z80_pio, z80_read_sm);
-    //pio_sm_restart(z80_pio, z80_read_sm);
+    pio_sm_clear_fifos(z80_read_pio, z80_read_sm);
+    pio_sm_restart(z80_read_pio, z80_read_sm);
  	
     if(setup_dma() != 0) {
         Con_printf("DMA setup error!\n");
