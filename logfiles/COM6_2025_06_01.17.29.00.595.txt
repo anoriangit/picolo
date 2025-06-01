@@ -1,0 +1,7 @@
+zproc_read_sm: 0
+zproc_write_sm: 0
+zproc_read program offset: 20
+SRAM addr:0x00200006
+ztick_sm: 1
+ztick program offset: 14
+ztick clock div: 50400.000000

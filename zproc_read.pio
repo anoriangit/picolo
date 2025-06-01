@@ -55,71 +55,52 @@
     ; get the SRAM base address into x
     pull
     mov x, osr
-   
-    ; switch bus pins to in (0)
-    mov osr, null
-    out pindirs, NUM_BUS_PINS
 
-    // switch OE control pins back to output because the out above has swítched them to input
-    // From the official documantation:
-    /*A 32-bit value is written to Destination: the lower Bit count bits come from the OSR, 
-    and the remainder are zeroes. */
-    set pindirs, 0b11 [2]   ; GP9, GP10 outputs (bits 0, 1)
-    set pins, 0b00 [26]     ; ADDR_OE low (0) (active), DATA_OE low (0) (inactive)
-                            ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
     .wrap_target
 
     ; ------------------------------------
     ; Wait for GP6 to go low (active)
     wait 0 pin RD_PIN       ; Wait until RD pin is low  
 
+    // set OE control pins 
+    set pindirs, 0b11       ; GP9, GP10 outputs (bits 0, 1)
+    set pins, 0b10          ; DATA_OE high (1) (inactive), ADDR_OE low (0) (active), 
+
+    ; switch bus pins to in (0)
+    mov osr, null
+    out pindirs, NUM_BUS_PINS
+
+    nop [31]
+    nop [31]
+
     ; ------------------------------------
     ; Read GP0-GP7 states into ISR (Input Shift Register)
-    ; NOTE: we should not have to add a delay for transceiver propagation
-    ; here because the RD signal passes through the same type of transceiver too
-    ; For stability reasons though (two transceivers will never be *exactly* the same)
-    ; we add a small delay anyway
-    ;nop [7]                    ; 3*3.698ns delay    
     mov isr, x                  ; restore the base address (gets shifted left 8 by the in below)
     in pins, NUM_BUS_PINS       ; shift pins into ISR
     push                        ; push the value read to the RX FIFO
 
     ; ------------------------------------
-    ; Switch transceivers to data output
-    ; need to wait for OE to propagate (3 ticks delay is enough for SN but not for TSX)
-    set pins, 0b11              ; ADDR_OE high (1) (inactive), DATA_OE high (1) (active)
-    nop [25]                    ; 26 cycles delay (26*3.968=103.168ns) for TXS0108E transition
-    nop [25]                    ; we need > 200 ns for a safe enable of the TSX008E
-    nop [25]
-    
-    irq 0
+    ; write the byte from SRAM to the Z80 data bus
 
-    ; ------------------------------------
-    ; write to z80 data bus
-    mov osr, ~null              ; switch pindirs to output (1)
-    out pindirs,8 
-    pull                        ; pull a 32 bit word from tx fifo into OSR
-    out pins, NUM_BUS_PINS      ; write to pins from OSR
+    ;mov osr, ~null              ; switch pindirs to output (1)
+    ;out pindirs,NUM_BUS_PINS [6]
+
+    ; Switch transceivers to data output (tsx enable -> max. 200 ns)
+    ;;set pindirs, 0b11           ; GP9, GP10 outputs (bits 0, 1)
+    ;;set pins, 0b10              ; DATA_OE low (0) (active), ADDR_OE high (1) (inactive)
+
+    ;pull block                  ; pull a 32 bit word from tx fifo into OSR
+    ;out pins, NUM_BUS_PINS      ; write to pins from OSR
+
+    ; irq 0
 
     ; ------------------------------------
     ; Wait until RD pin goes high again: Z80 has completed it's read cycle
-    ; this is required at lower frequencies in order to prevent double triggering
     wait 1 pin RD_PIN           
 
-    mov osr, null               ; revert pindirs to input (0)
-    out pindirs,8
-
-    ; Switch transceivers back to addr:active, data: inactive  
-    ; Note: remember TSX safe disable is minimum 400 ns
-    set pins, 0b00      ; ADDR_OE low (0) active, DATA_OE low (0) inactive
-
-    ; this is probably not needed because the Z80 will need longer than
-    ; this before it reaches its next RD cycle anyway
-    ;nop [25]                ; delay 26 cycles (26*3.968=103.168ns) for TXS0108E transition
-    ;nop [25]                ; min. 400ns needed for disable
-    ;nop [25]
-    ;nop [25]
-
+    ; Switch transceivers to data output (tsx enable -> max. 200 ns)
+    ;set pindirs, 0b11           ; GP9, GP10 outputs (bits 0, 1)
+    ;set pins, 0b01              ; DATA_OE low (0) (active), ADDR_OE high (1) (inactive)
 
     .wrap
 
@@ -135,7 +116,7 @@ void zproc_read_program_init(PIO pio, uint sm, uint offset) {
     // input value from a GPIO, but only for it to set the output value or output enable.
     for (uint i = zproc_read_BUS_PIN_0; i < zproc_read_BUS_PIN_0+zproc_read_NUM_PINS; i++) {
         pio_gpio_init(pio, i);
-        gpio_set_pulls(i, false, true); // Enable pull-down, disable pull-up
+        gpio_set_pulls(i, false, false); 
     }
 
     // Configure RD pin as input
@@ -153,7 +134,7 @@ void zproc_read_program_init(PIO pio, uint sm, uint offset) {
     // output pins: BUS (overlaps in pins)
     // NOTE: if the  OE control pins are set as out pins here
     // they get included in the "out set" and every out operation
-    // will affect them to! Better control them using the "set set"
+    // will affect them too! Better control them using the "set set"
     sm_config_set_out_pins(&c, zproc_read_BUS_PIN_0, zproc_read_NUM_BUS_PINS);
 
     // define "set pins" (pins affected by the "set" operation)

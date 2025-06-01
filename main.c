@@ -237,12 +237,23 @@ int __not_in_flash("main") main() {
 	// main loop
 	while (1) {
 
-
+		// these can be used for debugging 
+		// dma needs to be disabled
+		// if this code AND dma are enabled bad things will happen
+		/*
 		uint32_t addr = pio_sm_get_blocking(z80_write_pio, z80_write_sm);
 		//pio_sm_clear_fifos (z80_write_pio, z80_write_sm);
 		uint32_t data = pio_sm_get_blocking(z80_write_pio, z80_write_sm);
 		Con_printf("write 0x%0x:0x%0x\n", addr, data);
-		
+		*/
+
+		uint32_t addr = pio_sm_get_blocking(z80_read_pio, z80_read_sm);
+		uint32_t data = (SRAM[addr&0x000000ff])<<24;
+		//pio_sm_put_blocking(z80_read_pio, z80_read_sm, data);
+	
+		uint32_t time_ms = time_us_32() / 1000;
+		printf("READ time:%u 0x%08x:0x%08x\n", time_ms, addr, data);
+
 #if 0
 
      	//pio_sm_set_consecutive_pindirs(z80_pio, z80_sm, 0, z80_ram_PIN_COUNT, false);

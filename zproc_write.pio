@@ -27,15 +27,15 @@
 
 .program zproc_write
 
-.define public NUM_BUS_PINS    8    ; (2-9)
-.define public NUM_PINS        10   ; (2-11)
+.define public NUM_BUS_PINS    8    
+.define public NUM_PINS        10   
 
-.define public BUS_PIN_0   2
+.define public BUS_PIN_0   0
+.define public ADDR_OE_PIN 8    ; address transceiver OE
+.define public DATA_OE_PIN 9    ; data transceiver OE
+
 .define public RD_PIN      27
 .define public WR_PIN      26
-
-.define public ADDR_OE_PIN 10    ; address transceiver OE
-.define public DATA_OE_PIN 11    ; data transceiver OE
 
 ; This is used to process data to&from the Z80
 
@@ -79,7 +79,7 @@
     nop [25]                ; 26 cycles delay (26*3.968=103.168ns) for TXS0108E transition
     nop [25]                ; max. 200ns needed for enable
 
-    ; read z80 data bus
+    ; read z80 data bus: this byte needs to go to SRAM
     in pins, NUM_BUS_PINS   ; shift one byte from Z80 data bus to ISR
     push                    ; push to RX fifo (dma will write to SRAM address injected above)
 
@@ -87,10 +87,8 @@
 
     ; ------------------------------------
     ; Wait until WR pin goes high again: Z80 has completed it's write cycle
+    ; no need to swicth pindirs: we are still set up to read anyway
     wait 1 pin WR_PIN           
-
-    ;mov osr, null               ; revert bus pindirs to input (0)
-    ;out pindirs,8
 
     ; Switch transceivers back to addr:active, data: inactive  
     set pins, 0b00      ; ADDR_OE low (0) active, DATA_OE low (0) inactive
@@ -101,7 +99,6 @@
     ;nop [25]                ; min. 400ns needed for disable
     ;nop [25]
     ;nop [25]
-
 
     .wrap
 
@@ -114,27 +111,40 @@ void zproc_write_program_init(PIO pio, uint sm, uint offset) {
     // this pin configuration is the same as in zproc_read
     // doing it here again is redundant and potentially will mess with zproc_read 
     // should that already be active    
-#if 0
     // Initialize all our pins
     // NOTE: pio_gpio_init(), from the official docs:
     // Note that this is not necessary for a state machine to be able to read the 
     // input value from a GPIO, but only for it to set the output value or output enable.
-    for (uint i = 0; i < zproc_write_NUM_PINS; i++) {
+#if 0
+    for (uint i = zproc_write_BUS_PIN_0; i < zproc_write_BUS_PIN_0+zproc_write_NUM_PINS; i++) {
         pio_gpio_init(pio, i);
-        gpio_set_pulls(i, false, true); // Enable pull-down, disable pull-up
+        gpio_set_pulls(i, false, false); 
     }
-#endif
+#endif 
 
+    // Configure WR pin as input
+    pio_gpio_init(pio, zproc_write_WR_PIN);
+    pio_sm_set_consecutive_pindirs(pio, sm, zproc_write_RD_PIN, 1, false);    // false = 0 = input
+                                                                                                                                                     
     // Sets up state machine and wrap target. This function is automatically
     // generated in zproc.pio.h.
-    pio_sm_config c = zproc_write_program_get_default_config(offset);
+    pio_sm_config c = zproc_read_program_get_default_config(offset);
 
+#if 0
+    // BUS input pins setup
     sm_config_set_in_pins(&c, zproc_write_BUS_PIN_0);
     sm_config_set_in_pin_count(&c, zproc_write_NUM_BUS_PINS);
 
+    // output pins: BUS (overlaps in pins)
+    // NOTE: if the  OE control pins are set as out pins here
+    // they get included in the "out set" and every out operation
+    // will affect them to! Better control them using the "set set"
+    sm_config_set_out_pins(&c, zproc_write_BUS_PIN_0, zproc_write_NUM_BUS_PINS);
+
     // define "set pins" (pins affected by the "set" operation)
-    // two pins starting at ADDR_OE_PIN
+    // two control pins starting at ADDR_OE_PIN
     sm_config_set_set_pins(&c, zproc_write_ADDR_OE_PIN, 2);
+#endif
 
     // Set shift direction for ISR & OSR
     sm_config_set_in_shift(&c, false, false, 32);    // ISR left shift, auto push after 8 bits
@@ -142,6 +152,7 @@ void zproc_write_program_init(PIO pio, uint sm, uint offset) {
     
     // Load configuration and jump to start of the program
     pio_sm_init(pio, sm, offset, &c);
+
 }
 
 %}
