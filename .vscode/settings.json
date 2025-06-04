@@ -47,7 +47,10 @@
         "board_api.h": "c",
         "hw_config.h": "c",
         "f_util.h": "c",
-        "ff.h": "c"
+        "ff.h": "c",
+        "zxe.h": "c",
+        "zxe.pio.h": "c",
+        "pio.h": "c"
     },
     "cortex-debug.variableUseNaturalFormat": false
 }

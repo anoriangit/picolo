@@ -1,0 +1,106 @@
+
+; Transceiver Information
+; SN74LVC245A used for 5V -> 3.3V down translation
+; runs at VCC 3.3V
+; Pin propagation time at VCC: max 8.3 ns
+; OE Enable at VCC: 11 ns
+; OE Disable at VCC: 9.5 ns
+
+
+; timing at 252MHz
+; wait: 1 cycle = 3.968 ns
+; in: 1 cycle = 3.968 ns
+; push: 1 cycle = 3.968 ns
+; wrap: 0 cycles
+; Total per loop (without wait blocking): 3×3.968=11.904
+; If wait blocks, add the blocking time (in multiples of 3.968 ns based on how many cycles GP6 is low).
+; DMA: each transfer needs around 100 ns
+
+
+
+.program zxe
+
+.define public NUM_PINS         8   ; both buses
+.define public NUM_BUS_PINS     8   ; per bus
+
+.define public BUS_PIN_0        0
+.define public ADDR_BUS_PIN_0   0
+.define public DATA_BUS_PIN_0   0
+
+.define public IORQ_PIN        8
+.define public WR_PIN          9
+
+
+.define public ADDR_OE_LSB  10  ; address bus transceiver OE
+.define public DATA_OE_RD   11  ; data bus read transceiver OE
+
+; 0bDATA|ADDR (0=on, 1=0ff)
+.define ADDR_ON_DATA_OFF  0b10
+.define ADDR_OFF_DATA_OFF 0b11
+.define ADDR_OFF_DATA_ON  0b01
+
+
+; loop
+
+    set pindirs, 0b11       ; output (bits 0, 1)
+    set pins, ADDR_ON_DATA_OFF
+
+    .wrap_target
+
+    wait 1 irq 4    
+    in pins, NUM_BUS_PINS       ; shift address bus pins into ISR
+    push                        ; push to RX FIFO
+
+    ;irq clear 4
+
+    .wrap
+
+
+% c-sdk {
+
+// Helper function (for use in C program) to initialize this PIO program
+void zxe_program_init(PIO pio, uint sm, uint offset) {
+
+    // Initialize BUS pins
+    for (uint i = zxe_BUS_PIN_0; i < zxe_BUS_PIN_0+zxe_NUM_PINS; i++) {
+        pio_gpio_init(pio, i);
+        gpio_set_pulls(i, false, false);    // no pulls for now
+    }
+
+    // Configure WR and IORQ as input
+    // NOTE: only on non ADC pins connected as input can the pico take 5V!
+    pio_gpio_init(pio, zxe_WR_PIN);
+    pio_gpio_init(pio, zxe_IORQ_PIN);
+    pio_sm_set_consecutive_pindirs(
+        pio, sm, zxe_IORQ_PIN, 2, false);    // false = 0 = input
+
+    // OE pins as output
+    pio_gpio_init(pio, zxe_ADDR_OE_LSB);
+    pio_gpio_init(pio, zxe_DATA_OE_RD);
+    pio_sm_set_consecutive_pindirs(
+        pio, sm, zxe_ADDR_OE_LSB, 2, true);    // is_out=true
+                                                                                                                                                     
+    // Sets up state machine and wrap target. This function is automatically
+    // generated in zproc.pio.h.
+    pio_sm_config c = zxe_program_get_default_config(offset);
+
+    // ADDR+DATA BUS input pins set
+    sm_config_set_in_pins(&c, zxe_BUS_PIN_0);
+    sm_config_set_in_pin_count(&c, zxe_NUM_PINS);
+
+    // output pins: DATA BUS 
+    //sm_config_set_out_pins(&c, zxe_DATA_BUS_PIN_0, zxe_NUM_BUS_PINS);
+
+    // define "set pins" (pins affected by the "set" operation)
+    // two control pins starting at ADDR_OE_LSB
+    sm_config_set_set_pins(&c, zxe_ADDR_OE_LSB, 2);
+
+    // Set shift direction for ISR & OSR
+    sm_config_set_in_shift(&c, false, false, 32);    // ISR left shift, auto push after 8 bits
+    sm_config_set_out_shift(&c, false, false, 32);   // OSR left shift, auto pull after 8 bits
+    
+    // Load configuration and jump to start of the program
+    pio_sm_init(pio, sm, offset, &c);
+}
+
+%}

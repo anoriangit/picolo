@@ -11,9 +11,6 @@
 ; OE Enable at VCC: 11 ns
 ; OE Disable at VCC: 9.5 ns
 
-; TXS0108E
-; OE Enable: 200 ns
-; OE Disable: 400 ns
 
 
 ; timing at 252MHz
@@ -39,15 +36,23 @@
 
 .program zproc_read
 
-.define public NUM_BUS_PINS    8    
-.define public NUM_PINS        10   
+.define public NUM_PINS         16  ; both buses
+.define public NUM_BUS_PINS     8   ; per bus
 
-.define public BUS_PIN_0   0
-.define public ADDR_OE_PIN 8    ; address transceiver OE
-.define public DATA_OE_PIN 9    ; data transceiver OE
+.define public BUS_PIN_0        0
+.define public ADDR_BUS_PIN_0   0
+.define public DATA_BUS_PIN_0   8
+
+.define public DATA_OE_RD   20   ; data bus read transceiver OE
+.define public ADDR_OE_LSB  19   ; address bus transceiver OE
 
 .define public RD_PIN      27
 .define public WR_PIN      26
+
+; 0bDATA|ADDR (0=on, 1=0ff)
+.define ADDR_ON_DATA_WRITE_OFF  0b10
+.define ADDR_OFF_DATA_WRITE_OFF 0b11
+.define ADDR_OFF_DATA_WRITE_ON  0b01
 
 
 ; This is used to process data to&from the Z80
@@ -62,45 +67,44 @@
     ; Wait for GP6 to go low (active)
     wait 0 pin RD_PIN       ; Wait until RD pin is low  
 
-    // set OE control pins 
-    set pindirs, 0b11       ; GP9, GP10 outputs (bits 0, 1)
-    set pins, 0b10          ; DATA_OE high (1) (inactive), ADDR_OE low (0) (active), 
-
     ; switch bus pins to in (0)
     mov osr, null
     out pindirs, NUM_BUS_PINS
 
-    nop [31]
-    nop [31]
+    // set OE control pins 
+    set pindirs, 0b11       ; output (bits 0, 1)
+    set pins, ADDR_ON_DATA_WRITE_OFF
+    nop [22]                ; delay for transceiver OE: 5*3.968 ~= 20 ns
+
 
     ; ------------------------------------
     ; Read GP0-GP7 states into ISR (Input Shift Register)
     mov isr, x                  ; restore the base address (gets shifted left 8 by the in below)
-    in pins, NUM_BUS_PINS       ; shift pins into ISR
+    in pins, NUM_BUS_PINS       ; shift address bus pins into ISR
     push                        ; push the value read to the RX FIFO
 
     ; ------------------------------------
     ; write the byte from SRAM to the Z80 data bus
 
-    ;mov osr, ~null              ; switch pindirs to output (1)
-    ;out pindirs,NUM_BUS_PINS [6]
+    // set  OE control pins for data bus write
+    set pindirs, 0b11       ; output (bits 0, 1)
+    set pins, ADDR_OFF_DATA_WRITE_ON
+    nop [22]                ; delay for transceiver OE: 5*3.968 ~= 20 ns
 
-    ; Switch transceivers to data output (tsx enable -> max. 200 ns)
-    ;;set pindirs, 0b11           ; GP9, GP10 outputs (bits 0, 1)
-    ;;set pins, 0b10              ; DATA_OE low (0) (active), ADDR_OE high (1) (inactive)
+    ;^^^^^^^^^^^^^^^^^^^^^^^^irq 0
 
-    ;pull block                  ; pull a 32 bit word from tx fifo into OSR
-    ;out pins, NUM_BUS_PINS      ; write to pins from OSR
+    mov osr, ~null              ; switch pindirs to output (1)
+    out pindirs,NUM_BUS_PINS
+    pull block                  ; pull a 32 bit word from tx fifo into OSR
+    
 
-    ; irq 0
+    out pins, NUM_BUS_PINS      ; write to pins from OSR
+
+
 
     ; ------------------------------------
     ; Wait until RD pin goes high again: Z80 has completed it's read cycle
     wait 1 pin RD_PIN           
-
-    ; Switch transceivers to data output (tsx enable -> max. 200 ns)
-    ;set pindirs, 0b11           ; GP9, GP10 outputs (bits 0, 1)
-    ;set pins, 0b01              ; DATA_OE low (0) (active), ADDR_OE high (1) (inactive)
 
     .wrap
 
@@ -121,25 +125,29 @@ void zproc_read_program_init(PIO pio, uint sm, uint offset) {
 
     // Configure RD pin as input
     pio_gpio_init(pio, zproc_read_RD_PIN);
-    pio_sm_set_consecutive_pindirs(pio, sm, zproc_read_RD_PIN, 1, false);    // false = 0 = input
+    pio_sm_set_consecutive_pindirs(
+        pio, sm, zproc_read_RD_PIN, 1, false);    // false = 0 = input
+
+    // OE pins as output
+    pio_gpio_init(pio, zproc_read_ADDR_OE_LSB);
+    pio_gpio_init(pio, zproc_read_DATA_OE_RD);
+    pio_sm_set_consecutive_pindirs(
+        pio, sm, zproc_read_ADDR_OE_LSB, 2, true);    // is_out=true
                                                                                                                                                      
     // Sets up state machine and wrap target. This function is automatically
     // generated in zproc.pio.h.
     pio_sm_config c = zproc_read_program_get_default_config(offset);
 
-    // BUS input pins setup
+    // ADDR+DATA BUS input pins set
     sm_config_set_in_pins(&c, zproc_read_BUS_PIN_0);
-    sm_config_set_in_pin_count(&c, zproc_read_NUM_BUS_PINS);
+    sm_config_set_in_pin_count(&c, zproc_read_NUM_PINS);
 
-    // output pins: BUS (overlaps in pins)
-    // NOTE: if the  OE control pins are set as out pins here
-    // they get included in the "out set" and every out operation
-    // will affect them too! Better control them using the "set set"
-    sm_config_set_out_pins(&c, zproc_read_BUS_PIN_0, zproc_read_NUM_BUS_PINS);
+    // output pins: DATA BUS 
+    //sm_config_set_out_pins(&c, zproc_read_DATA_BUS_PIN_0, zproc_read_NUM_BUS_PINS);
 
     // define "set pins" (pins affected by the "set" operation)
-    // two control pins starting at ADDR_OE_PIN
-    sm_config_set_set_pins(&c, zproc_read_ADDR_OE_PIN, 2);
+    // two control pins starting at ADDR_OE_LSB
+    sm_config_set_set_pins(&c, zproc_read_ADDR_OE_LSB, 2);
 
     // Set shift direction for ISR & OSR
     sm_config_set_in_shift(&c, false, false, 32);    // ISR left shift, auto push after 8 bits

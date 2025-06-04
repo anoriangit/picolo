@@ -1,5 +1,12 @@
 #pragma once
 
+#define Z80_RESET_PIN   21
+#define Z80_CLOCK_PIN   22
+
+#define Z80_IORQ_PIN    8
+#define Z80_WR_PIN      9
+
+
 #define SRAM_SIZE 256
 extern uint8_t SRAM[SRAM_SIZE];
 

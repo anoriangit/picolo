@@ -16,6 +16,7 @@
 #include "display.h"
 #include "conio.h"
 #include "shell.h"
+#include "z80_memory.h"
 #include "ztick.pio.h"
 #include "zproc_read.pio.h"
 #include "zproc_write.pio.h"
@@ -34,8 +35,6 @@
 #define PIO_IRQ_PRIORITY PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY
 #endif
 
-#define Z80_RESET_PIN 21
-#define Z80_CLOCK_PIN 22
 
 
 uint ztick_sm;
@@ -82,7 +81,7 @@ int start_z80(float tick_freq) {
     pio_sm_set_enabled(pio, ztick_sm, true);
 
     // wait for some ticks so Z80 can reset
-    busy_wait_ms(100);
+    busy_wait_ms(200);
     gpio_put(Z80_RESET_PIN, 1);         // high
 
     return 0;
@@ -111,7 +110,7 @@ uint8_t SRAM[SRAM_SIZE] __attribute__((aligned(256))) = {
     0x21,0x0e,0x00,     // 0: ld hl, 14
     0x11,0xd8,0x00,     // 3: ld de, 216
     0x01,0x28,0x00,     // 6: ld bc, 40
-    0x00,0x00,          // 9: ed b0 ldir
+    0xed,0xb0,          // 9: ed b0 ldir
     0xc3,0x00,0x00,     // 11:jp 0
     0x48,0x65,0x6c,0x6c,0x6f    // 14: .db "Hello"
 };
@@ -122,11 +121,11 @@ void __not_in_flash_func(z80_read_irq_handler)(void) {
 	pio_interrupt_clear(z80_read_pio, 0);
 
 #if 1
-    uint32_t addr = (uint32_t)dma_hw->ch[read_ram_dma].al3_read_addr_trig;
+    //uint32_t addr = (uint32_t)dma_hw->ch[read_ram_dma].al3_read_addr_trig;
     uint32_t data = z80_read_pio->txf[z80_read_sm];
     
     //Con_printf("read:%03u:0x%08x\n", addr&0x000000ff, data);
-    Con_printf("read:0x%08x:0x%08x\n", addr&0x000000ff, data);
+    Con_printf("irq read:0x%08x\n", data);
 #endif
 
     /* grok version
@@ -285,7 +284,7 @@ int process_z80() {
 
     // Initialize SRAM with a contiguous sequence of "JR 6" relative jumps
     //memset(SRAM,0,256);
-#if 1
+#if 0
     for (int i = 0; i < SRAM_SIZE; i+=2){ 
 		SRAM[i] = 0x00;
 		SRAM[i+1] = 0x00;
@@ -309,12 +308,6 @@ int process_z80() {
 		return offset;
 
     zproc_read_program_init(z80_read_pio, z80_read_sm, offset);
-
-    // Need to clear _input shift counter_, as well as FIFO, because there may be
-    // partial ISR contents left over from a previous run. sm_restart does this.
-    // NOTE: not sure about this?!?
-    pio_sm_clear_fifos(z80_read_pio, z80_read_sm);
-    pio_sm_restart(z80_read_pio, z80_read_sm);
  
 #if 0
     // Load and initialize the WRITE PIO program
@@ -343,6 +336,14 @@ int process_z80() {
     // Get READ SM up and running 
     // push 24 most significant bits of the base address of SRAM
     pio_sm_set_enabled(z80_read_pio, z80_read_sm, true);
+
+   // Need to clear _input shift counter_, as well as FIFO, because there may be
+    // partial ISR contents left over from a previous run. sm_restart does this.
+    // NOTE: not sure about this?!?
+    pio_sm_clear_fifos(z80_read_pio, z80_read_sm);
+    pio_sm_restart(z80_read_pio, z80_read_sm);
+ 
+
     Con_printf("SRAM addr:0x%08x\n", (uintptr_t) SRAM>>8);
 	pio_sm_put_blocking(z80_read_pio, z80_read_sm, (uintptr_t) SRAM>>8);
 
@@ -351,7 +352,7 @@ int process_z80() {
 	//pio_sm_put(z80_write_pio, z80_write_sm, (uintptr_t) SRAM>>8);
     //pio_sm_set_enabled(z80_write_pio, z80_write_sm, true);
 
-#if 0
+#if 1
 	// pio irq times 2 for debugging
     // READ (pio1)
     pio_set_irq0_source_mask_enabled(z80_read_pio, 0b0000111100000000 /*3840*/, true);	// enables all 4 irq

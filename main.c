@@ -46,7 +46,7 @@
 
 // Z80
 #include "z80_memory.h"
-
+#include "zxe_driver.h"
 
 #define START_DVI 0
 
@@ -56,6 +56,8 @@
 #define DVI_TIMING dvi_timing_640x480p_60hz
 
 #define LED_PIN PICO_DEFAULT_LED_PIN
+
+#define BUTTON_PIN      16
 
 
 #define PIO_IRQ_TO_USE 0
@@ -69,6 +71,8 @@ struct semaphore dvi_start_sem;
  */
 
 uint8_t FRAMEBUF[D_FRAME_WIDTH * D_FRAME_HEIGHT];
+
+#if 0
 
 void core1_main() {
 	dvi_register_irqs_this_core(&dvi0, DMA_IRQ_0);
@@ -98,6 +102,7 @@ void core1_scanline_callback() {
 	scanline = (scanline + 1) % D_FRAME_HEIGHT;
 }
 
+#endif
 
 /******************************************************************************
  * CORE0 code
@@ -142,10 +147,9 @@ bool display_timer_callback(__unused struct repeating_timer *t) {
 	return true;
 }
 
-
+ 
 int __not_in_flash("main") main() {
 //int main() {
-
 
 	vreg_set_voltage(VREG_VSEL);
 	sleep_ms(10);
@@ -157,13 +161,16 @@ int __not_in_flash("main") main() {
 	//setup_default_uart();
 	// Set GPI28 as TX and GPI29 as RX for UART0
     gpio_set_function(28, GPIO_FUNC_UART); // TX
-    gpio_set_function(19, GPIO_FUNC_UART); // RX
+    gpio_set_function(29, GPIO_FUNC_UART); // RX
     stdio_init_all();
+
+	printf("------------------------\n");
 
 	// switch on system LED to indicate we are running
 	gpio_init(LED_PIN);
 	gpio_set_dir(LED_PIN, GPIO_OUT);
 	gpio_put(LED_PIN, true);
+
 
 	// init tinyusb host stack on configured roothub port
   	//tusb_init();
@@ -216,111 +223,72 @@ int __not_in_flash("main") main() {
 
 	// drive text display and tuh at 50hz
     struct repeating_timer timer;
-    add_repeating_timer_ms(-20, display_timer_callback, NULL, &timer);
+    //add_repeating_timer_ms(-20, display_timer_callback, NULL, &timer);
 
-	
-	// start the Z80 ticking: first install the memory handler
-	// then start the clock
-	int error = 0;
-	process_z80();
 
-	// 1000->21Hz (with 60 wait cycles in ztick.pio)
-	// 5000->42Hz, 10000->80Hz 
-	static const float tick_freq = 5000;		
-	if(start_z80(tick_freq) < 0) {
-		Con_printf("Error starting Z80 clock\n");
-		error = 1;
-	}
+	// wire up some z80 signals for testing
+#if 1
+	zxe_init();
+	#else
+	// note: this includes the pin setup from above (amongst many other things)
+	zxe_init();
+#endif
 
 	uint32_t n_loops = 0;
+	uint32_t start_time_ms = time_us_32()/1000;
 
-	// main loop
+	printf("picolo startup completed\n");
+	printf("------------------------\n");
+
+// main loop
 	while (1) {
 
-		// these can be used for debugging 
-		// dma needs to be disabled
-		// if this code AND dma are enabled bad things will happen
-		/*
-		uint32_t addr = pio_sm_get_blocking(z80_write_pio, z80_write_sm);
-		//pio_sm_clear_fifos (z80_write_pio, z80_write_sm);
-		uint32_t data = pio_sm_get_blocking(z80_write_pio, z80_write_sm);
-		Con_printf("write 0x%0x:0x%0x\n", addr, data);
-		*/
+#if 1		
+		uint32_t pins = sio_hw->gpio_in;
+		
+		if(Z80_IORQ(pins) && Z80_WR(pins)) {
 
-		uint32_t addr = pio_sm_get_blocking(z80_read_pio, z80_read_sm);
-		uint32_t data = (SRAM[addr&0x000000ff])<<24;
-		//pio_sm_put_blocking(z80_read_pio, z80_read_sm, data);
-	
-		uint32_t time_ms = time_us_32() / 1000;
-		printf("READ time:%u 0x%08x:0x%08x\n", time_ms, addr, data);
+			uint8_t addr = pins & 0b11111111;
+			
+			// switch transceivers and get data bus byte
+			sio_hw->gpio_set = ADDR_OE_LSB_MASK; 	// OE high (disable)
+			sio_hw->gpio_clr = DATA_OE_MASK; 		// OE low (enable)
+			
+			asm volatile("nop");	// 3.968 ns delay
+			asm volatile("nop");	// 5*3.968 = 19,84 ns delay
+			asm volatile("nop");	
+			asm volatile("nop");	
+			asm volatile("nop");	
 
-#if 0
+			// read pins again
+			pins = sio_hw->gpio_in;
+			uint8_t data = pins & 0b11111111;
 
-     	//pio_sm_set_consecutive_pindirs(z80_pio, z80_sm, 0, z80_ram_PIN_COUNT, false);
-        
-		uint32_t addr = pio_sm_get_blocking(z80_pio, z80_sm) >> 24;
-        Con_printf("Addr: 0x%02x, Data: 0x%02x\n", addr, sram[addr]);
+			// switch back to address bus lsb
+			sio_hw->gpio_clr = ADDR_OE_LSB_MASK; 	// OE low (enable)
+			sio_hw->gpio_set = DATA_OE_MASK; 		// OE high (disable)
 
-        //pio_sm_set_consecutive_pindirs(z80_pio, z80_sm, 0, z80_ram_PIN_COUNT, true);
-       
-		dma_channel_set_read_addr(z80_dma, &sram[addr], true);
-#else
-		if(!error) {
+			printf("iorq|wr addr:%u data:%u\n", addr, data);
 
-#if 0
-		// semi automatic DMA variant: 
-		// read address from rx fifo and then trigger read_ram_dma 
+			do {
+				pins = sio_hw->gpio_in;
+			} while(Z80_IORQ(pins));
 
-		// Wait for data in the RX FIFO
-		uint32_t pin_states = pio_sm_get_blocking(z80_pio, z80_sm);
-
-		// if ISR is right shift
-		//uint8_t addr = pin_states >> 24;
-		// if ISR is left shift
-		//uint32_t addr = pin_states & 0x000000ff;
-		// if ISR is left shift AND we receive a full address
-		uint32_t addr = pin_states;
-
-		// transfer the data byte from SRAM to the pio tx fifo, either via dma or manually
-		/* full auto DMA variant does not need any of this */
-		// write the address to read from to the read_ram dma channel and trigger it
-		dma_channel_set_read_addr(read_ram_dma, (void*)((uint8_t*)addr), true);
-#endif
-
-#if 0
-		// pure CPU "manual" variant
-		// for left shift osr we need to move the data byte into the msb of the 32 bit word
-		// uint32_t data = SRAM[addr] << 24;
-		uint32_t data = (*((uint8_t*)addr)) << 24;
-		pio_sm_put_blocking(z80_pio, z80_sm, data);		// move to tx fifo (pulled into osr)
-#endif
-		// DEBUG: Print the pin states
-        //Con_printf("A0-A5: 0x%04x\n", pin_states);
-		// static uint32_t last_time_ms;
-		// uint32_t time_ms = time_us_32() / 1000;
-      
-#if 0	
-		if(addr != last_addr+4) {
-			Con_printf("%ums E: addr:%u last:%u diff:%u\n", time_ms, addr, last_addr, addr-last_addr);
 		}
 #endif
 
-#if 0
-		Con_printf("dT: %03u ms - ", time_ms-last_time_ms);
-        Con_printf("A0-A7: %d\n", addr&0x000000ff);
+#ifdef DEBUG_TIME
+		n_loops++;
+		uint32_t time_ms = time_us_32()/1000;
+		uint32_t delta_time_ms = time_ms - start_time_ms;
+		if(delta_time_ms >= 1000) {
+			printf("loops/sec:%u\n", n_loops);
+			start_time_ms = time_ms;
+			n_loops = 0;
+		}
 #endif
-	
-	
-#endif
-	}
-		/*
-		char *line = ShellReadInput();	// does not block
-		if(line) {
-			// might start a shell process (such as editor) and not return for duration
-			ShellProcessLine(line);		
-		} */
-		
-//		__wfi();
+
+		//		__wfi();
 
 	}
 

@@ -59,8 +59,8 @@ add_compile_definitions(USE_PRINTF)
 # Add executable. Default name is the project name, version 0.1
 add_executable(picolo
     main.c 
-    z80_memory.c
-    z80_memory.h
+    zxe_driver.c
+    zxe_driver.h
     platform.c
     platform.h
     besciifont.h
@@ -83,9 +83,7 @@ add_executable(picolo
     ed_status.c
     ed_copypaste.c
     ed.h
-    zproc_read.pio.h
-    zproc_write.pio.h
-    ztick.pio.h
+    zxe.pio.h
     )
 
 pico_set_program_name(picolo "picolo")
@@ -93,13 +91,7 @@ pico_set_program_version(picolo "1.0")
 
 # Create C header file with the name <pio program>.pio.h
 pico_generate_pio_header(${PROJECT_NAME}  
-        ${CMAKE_CURRENT_LIST_DIR}/ztick.pio
-)
-pico_generate_pio_header(${PROJECT_NAME}  
-        ${CMAKE_CURRENT_LIST_DIR}/zproc_read.pio
-)
-pico_generate_pio_header(${PROJECT_NAME}  
-        ${CMAKE_CURRENT_LIST_DIR}/zproc_write.pio
+        ${CMAKE_CURRENT_LIST_DIR}/zxe.pio
 )
 
 # Modify the below lines to enable/disable output over UART/USB
