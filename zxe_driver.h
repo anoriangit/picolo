@@ -3,9 +3,11 @@
 // GPIOs
 #define Z80_IORQ_PIN    8
 #define Z80_WR_PIN      9
+#define Z80_MREQ_PIN    10
 
-#define ADDR_OE_LSB_PIN     10     // address bus transceiver OE
-#define DATA_OE_PIN         11     // data bus read transceiver OE
+#define ADDR_OE_MSB_PIN     22     // hi address bus transceiver OE
+#define ADDR_OE_LSB_PIN     21     // lo address bus transceiver OE
+#define DATA_OE_PIN         20     // data bus read transceiver OE
 
 // SIO MASKS
 #define OE_ENABLE   0
