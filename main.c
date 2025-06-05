@@ -240,6 +240,8 @@ int __not_in_flash("main") main() {
 	printf("picolo startup completed\n");
 	printf("------------------------\n");
 
+//#define  DEBUG_TIME
+
 // main loop
 	while (1) {
 
@@ -248,11 +250,23 @@ int __not_in_flash("main") main() {
 		
 		if(Z80_IORQ(pins) && Z80_WR(pins)) {
 
-			uint8_t addr = pins & 0b11111111;
-			
-			// switch transceivers and get data bus byte
-			sio_hw->gpio_set = ADDR_OE_LSB_MASK; 	// OE high (disable)
-			sio_hw->gpio_clr = DATA_OE_MASK; 		// OE low (enable)
+			// get both parts of address
+			uint16_t addr = pins & 0b11111111;		// LSB
+				
+			sio_hw->gpio_set = ADDR_OE_LSB_MASK; 	// addr lsb OE disable (1)
+			sio_hw->gpio_clr = ADDR_OE_MSB_MASK; 	// addr msb OE enable (0)
+
+			asm volatile("nop");	// 3.968 ns delay
+			asm volatile("nop");	// 5*3.968 = 19,84 ns delay
+			asm volatile("nop");	
+			asm volatile("nop");	
+			asm volatile("nop");	
+
+			addr |= (sio_hw->gpio_in<<8);			// MSB
+
+			// reconfigure transceivers and get data bus byte
+			sio_hw->gpio_set = ADDR_OE_MSB_MASK; 	// addr msb OE disable (1)
+			sio_hw->gpio_clr = DATA_OE_MASK; 		// data OE enable (0)
 			
 			asm volatile("nop");	// 3.968 ns delay
 			asm volatile("nop");	// 5*3.968 = 19,84 ns delay
@@ -260,15 +274,16 @@ int __not_in_flash("main") main() {
 			asm volatile("nop");	
 			asm volatile("nop");	
 
-			// read pins again
+			// read pins once more
 			pins = sio_hw->gpio_in;
 			uint8_t data = pins & 0b11111111;
 
-			// switch back to address bus lsb
-			sio_hw->gpio_clr = ADDR_OE_LSB_MASK; 	// OE low (enable)
-			sio_hw->gpio_set = DATA_OE_MASK; 		// OE high (disable)
+			// switch transceivers around for next loop
+			sio_hw->gpio_clr = ADDR_OE_LSB_MASK;	// addr lsb OE enable (0)
+			sio_hw->gpio_set = DATA_OE_MASK; 		// data OE disable (1)
 
-			printf("iorq|wr addr:%u data:%u\n", addr, data);
+			if(addr >= 16384 && addr <= 23295) 
+				printf("mreq|wr addr:%u data:%u\n", addr, data);
 
 			do {
 				pins = sio_hw->gpio_in;

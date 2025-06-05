@@ -48,21 +48,35 @@ static void __not_in_flash_func(zxe_iord_irq_handler)(void) {
 
 void zxe_init() {
 
+    for(int i = Z80_BUS_PIN_0; i < Z80_NUM_BUS_PINS; i++) {
+    	gpio_init(i);
+	    gpio_set_dir(i, GPIO_IN);
+	    gpio_set_pulls(i, false, true);	    // up, down
+    }
+
     gpio_init(Z80_IORQ_PIN);
-	//gpio_set_pulls(zxe_IORQ_PIN, true, false);	// up, down
+	gpio_set_pulls(zxe_IORQ_PIN, false, true);	// up, down
 	gpio_set_dir(Z80_IORQ_PIN, GPIO_IN);
 	
 	gpio_init(Z80_WR_PIN);
-	//gpio_set_pulls(zxe_WR_PIN, true, false);	// up, down
+	gpio_set_pulls(zxe_WR_PIN, false, true);	// up, down
 	gpio_set_dir(Z80_WR_PIN, GPIO_IN);
 
 	// transceiver OE
-	gpio_init(ADDR_OE_LSB_PIN);
+	gpio_init(ADDR_OE_MSB_PIN);
+	gpio_set_dir(ADDR_OE_MSB_PIN, GPIO_OUT);
+	gpio_set_pulls(ADDR_OE_MSB_PIN, true, false);	// up, down
+
+    gpio_init(ADDR_OE_LSB_PIN);
 	gpio_set_dir(ADDR_OE_LSB_PIN, GPIO_OUT);
+	gpio_set_pulls(ADDR_OE_LSB_PIN, true, false);	// up, down
 
 	gpio_init(DATA_OE_PIN);
 	gpio_set_dir(DATA_OE_PIN, GPIO_OUT);
+	gpio_set_pulls(DATA_OE_PIN, true, false);	// up, down
 
+    // initially we want addr lsb enabled and addr msb + data disabled
+	gpio_put(ADDR_OE_MSB_PIN, OE_DISABLE);
 	gpio_put(ADDR_OE_LSB_PIN, OE_ENABLE);
 	gpio_put(DATA_OE_PIN, OE_DISABLE);
 

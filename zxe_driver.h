@@ -1,6 +1,9 @@
 #pragma once
 
 // GPIOs
+#define Z80_BUS_PIN_0       0
+#define Z80_NUM_BUS_PINS    8
+
 #define Z80_IORQ_PIN    8
 #define Z80_WR_PIN      9
 #define Z80_MREQ_PIN    10
@@ -19,8 +22,9 @@
 #define Z80_IORQ(p) 	(!(p & Z80_IORQ_MASK))
 #define Z80_WR(p) 	    (!(p & Z80_WR_MASK))
 
+#define ADDR_OE_MSB_MASK (1<<ADDR_OE_MSB_PIN)
 #define ADDR_OE_LSB_MASK (1<<ADDR_OE_LSB_PIN)
-#define DATA_OE_MASK    (1<<DATA_OE_PIN)
+#define DATA_OE_MASK     (1<<DATA_OE_PIN)
 
 
 #define SRAM_SIZE 256
