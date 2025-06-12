@@ -1,0 +1,13 @@
+------------------------
+picolo startup completed
+------------------------
+1000 accesses seen
+last addr:19267 data:75
+1000 accesses seen
+last addr:21331 data:83
+1000 accesses seen
+last addr:17219 data:67
+1000 accesses seen
+last addr:20303 data:79
+1000 accesses seen
+last addr:19273 data:75

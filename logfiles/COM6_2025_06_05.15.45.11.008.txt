@@ -1,0 +1,207 @@
+------------------------
+picolo startup completed
+------------------------
+loops/sec:1
+loops/sec:2803528
+loops/sec:5241290
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241288
+loops/sec:5241290
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241288
+loops/sec:5241290
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241288
+loops/sec:5241290
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241288
+loops/sec:5241290
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241288
+loops/sec:5241290
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241288
+loops/sec:5241290
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241288
+loops/sec:5241290
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241288
+loops/sec:5241290
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241287
+loops/sec:5241288
+loops/sec:5241290
+loops/sec:5241288
+loops/sec:5241289
+loops/sec:5241288
+------------------------
+picolo startup completed
+------------------------
+iorq|wr addr:4864 data:128
+iorq|wr addr:57088 data:255
+iorq|wr addr:20479 data:255
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:255 data:255
+iorq|wr addr:8448 data:255
+iorq|wr addr:8191 data:255
+iorq|wr addr:20479 data:255
+iorq|wr addr:8191 data:255
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:65535 data:255
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:49152 data:1
+iorq|wr addr:769 data:127
+iorq|wr addr:16433 data:0
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:255 data:255
+iorq|wr addr:65533 data:0
+iorq|wr addr:16433 data:128
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+iorq|wr addr:65535 data:255
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+------------------------
+picolo startup completed
+------------------------
+iorq|wr addr:63997 data:7
+iorq|wr addr:63997 data:7
+iorq|wr addr:47872 data:251
+iorq|wr addr:20471 data:255
+iorq|wr addr:9723 data:4
+iorq|wr addr:9723 data:4
+iorq|wr addr:61184 data:0
+iorq|wr addr:20479 data:255
+iorq|wr addr:9723 data:4
+iorq|wr addr:9723 data:4
+iorq|wr addr:65281 data:1
+iorq|wr addr:20471 data:255
+iorq|wr addr:9723 data:12
+iorq|wr addr:9723 data:4
+------------------------
+picolo startup completed
+------------------------
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:63741 data:4
+iorq|wr addr:32631 data:0
+iorq|wr addr:0 data:255
+iorq|wr addr:8191 data:113
+iorq|wr addr:17151 data:255
+iorq|wr addr:8191 data:96
+iorq|wr addr:8443 data:4
+iorq|wr addr:8443 data:4
+------------------------
+picolo startup completed
+------------------------
+iorq|wr addr:127 data:255

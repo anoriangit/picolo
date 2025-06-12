@@ -1,0 +1,3 @@
+mreq|wr addr:23232 data:0
+mreq|wr addr:23232 data:56
+mreq|wr addr:23264 data:0

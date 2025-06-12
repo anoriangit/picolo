@@ -1,0 +1,39 @@
+------------------------
+picolo startup completed
+------------------------
+------------------------
+picolo startup completed
+------------------------
+------------------------
+picolo startup completed
+------------------------
+80 accesses seen
+------------------------
+picolo startup completed
+------------------------
+80 accesses seen
+last addr:20303 data:75
+80 accesses seen
+last addr:18183 data:71
+------------------------
+picolo startup completed
+------------------------
+------------------------
+picolo startup completed
+------------------------
+mreq|wr addr:23130 data:2
+mreq|wr addr:21058 data:82
+mreq|wr addr:21082 data:82
+mreq|wr addr:22367 data:87
+mreq|wr addr:21339 data:3
+mreq|wr addr:19275 data:75
+mreq|wr addr:18247 data:7
+mreq|wr addr:17219 data:67
+mreq|wr addr:18247 data:7
+mreq|wr addr:20047 data:14
+mreq|wr addr:20303 data:15
+mreq|wr addr:18247 data:6
+mreq|wr addr:20303 data:15
+mreq|wr addr:20303 data:79
+mreq|wr addr:18247 data:7
+mreq|wr addr:19275 data:75

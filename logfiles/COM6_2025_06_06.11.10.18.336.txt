@@ -1,0 +1,19 @@
+mreq|wr addr:19136 data:202
+mreq|wr addr:23249 data:218
+mreq|wr addr:16896 dataddr:21177 data:210
+:194
+mreq|wr amreq|wr addr:23040 data:218
+mreq|wr addr:19152 data:202
+mreq|wr addr:23232 data:218
+mreq|wr addr:16899 data:194
+mreq|wr addr:16900 data:194
+mreq|wr addr:16906 data:194
+mreq|wr addr:16912 data:194
+mreq|wr addr:16931 data:194
+mreq|wr addr:16932 data:194
+mreq|wr addr:16938 data:194
+mreq|wr addr:16944 data:194
+------------------------
+picolo startup completed
+------------------------
+mreq|wr addr:18432 data:0

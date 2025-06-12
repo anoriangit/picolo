@@ -1,0 +1,10 @@
+------------------------
+picolo startup completed
+------------------------
+iorq|wr addr:63742 data:240
+iorq|wr addr:23051 data:255
+iorq|wr addr:65535 data:255
+iorq|wr addr:20529 data:224
+iorq|wr addr:8191 data:255
+iorq|wr addr:12539 data:4
+iorq|wr addr:12539 data:4

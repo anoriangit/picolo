@@ -1,0 +1,8 @@
+------------------------
+picolo startup completed
+------------------------
+loops/sec:1
+loops/sec:5184743
+loops/sec:5020436
+loops/sec:5016373
+loops/sec:5016672

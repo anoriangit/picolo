@@ -1,0 +1,5 @@
+2 addr:251 data:251
+3 addr:251 data:251
+------------------------
+picolo startup completed
+------------------------
