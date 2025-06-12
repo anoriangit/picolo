@@ -119,6 +119,7 @@ target_link_libraries(picolo
         libdvi
         libsprite
         no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
+        hardware_spi
         #liblua
         )
 

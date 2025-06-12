@@ -4,3 +4,55 @@ Free heap after init: 129096
 Start rendering
 sd_init_medium:1410: No disk, or could not put SD card in to SPI idle state
 sd_card_spi_init:1626: Failed to initialize card
+Configuring DVI
+Core 1 start
+Free heap after init: 129160
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129144
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129096
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129112
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129112
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129112
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129112
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129112
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129112
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129112
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129112
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129112
+Start rendering
+Configuring DVI
+Core 1 start
+Free heap after init: 129112
+Start rendering

@@ -7,6 +7,7 @@
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 #include "hardware/irq.h"
+#include "hardware/spi.h"
 #include "hardware/sync.h"
 #include "hardware/vreg.h"
 #include "hardware/structs/bus_ctrl.h"
@@ -34,6 +35,15 @@
 #include "ff.h"
 #include "hw_config.h"
 #include "sd_card.h"
+
+// SPI
+#define SPI_PORT spi0
+#define PIN_MISO 4 // RX (data input)
+#define PIN_CS   5 // CSn
+#define PIN_SCK  2 // SCK
+#define PIN_MOSI 3 // TX (not used)
+//#define SPI_BAUDRATE 25200000 // 25.2 MHz (nominal, matches master)
+#define SPI_BAUDRATE 8000000
 
 // picolo
 #include "platform.h"
@@ -105,11 +115,16 @@ void StopKeyRepeat() {
 	auto_repeat_key = 0;
 }
 
+bool RENDER_CONSOLE = 0;
+
 // 50hz regular updates
 bool display_timer_callback(__unused struct repeating_timer *t) {
     //printf("Repeat at %lld\n", time_us_64());
-	for(int scanline = 0; scanline < D_FRAME_HEIGHT; scanline++)
-		RenderTextScanline(scanline);
+
+	if(RENDER_CONSOLE) {
+		for(int scanline = 0; scanline < D_FRAME_HEIGHT; scanline++)
+			RenderTextScanline(scanline);
+	}
 
    	tuh_task();
 
@@ -120,6 +135,79 @@ bool display_timer_callback(__unused struct repeating_timer *t) {
 	framecount++;
     return true;
 }
+
+void spi_receive_isr() {
+		uint32_t spi_data;
+		int bytes_read = spi_read_blocking(SPI_PORT, 0x00, (uint8_t*)&spi_data, 3);
+        //if (bytes_read == 4) {
+		uint16_t addr = ((spi_data & 0x00ffff00) >> 8);
+		uint16_t offset = addr - 16384;
+
+		if(offset >= 6144)
+			return;
+
+#if 1
+		 // Calculate components
+    	int third = offset / 2048;
+    	int line_in_char = (offset % 2048) / 256;
+	    int char_row_in_third = ((offset % 2048) % 256) / 32;
+    	int x_byte = offset & 0b0000000000011111; //offset % 32;
+
+    	// Calculate Y coordinate
+    	int y = (third * 64) + (char_row_in_third * 8) + line_in_char;
+
+    	// Calculate X coordinate
+    	int x = x_byte * 8;
+#else
+
+		// mask out Y			    15   10 76543210
+		uint16_t y_7_6 = offset & 0b0001100000000000;		
+		uint16_t y_2_0 = offset & 0b0000011100000000;
+		uint16_t y_5_3 = offset & 0b0000000011100000;
+		uint16_t y = (y_7_6>>5) | (y_5_3>>5) | (y_2_0>>5);
+		uint16_t x = offset & 0b0000000000011111;		
+#endif
+		//Con_printf("offset %u x:%u y:%u\n", offset, x, y);
+
+#if 1
+		uint8_t *fp = FRAMEBUF + (y+24) * 320 + x + 32;
+
+		uint8_t data = (spi_data & 0x000000ff); 
+
+		uint8_t mask = 0b10000000;
+		for(int i = 0; i < 8; i++) {
+			if(data&mask) {
+				*fp++ = 0;
+			} else {
+				*fp++ = 255;
+			}
+			mask = mask>>1;
+		}
+#endif
+}
+
+void init_spi() {
+
+ 	// Initialize SPI0 as slave
+    uint actual_baudrate = spi_init(SPI_PORT, SPI_BAUDRATE);
+    if (actual_baudrate == 0) {
+        Con_printf("Error: Failed to initialize SPI\n");
+    }
+    //spi_set_format(SPI_PORT, 16, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    spi_set_slave(SPI_PORT, true);
+    gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
+    gpio_set_function(PIN_CS, GPIO_FUNC_SPI);
+    gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
+    gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
+
+	spi0_hw->imsc = 1 << 2;		// fire irq when fifo is 1/2 full (8 bits)
+	irq_set_enabled(SPI0_IRQ, 1);
+	spi0_hw->dr = 0;
+	irq_set_exclusive_handler(SPI0_IRQ, spi_receive_isr);
+	
+    printf("Pico A (Slave): Waiting for SPI data at %u Hz\n", actual_baudrate);
+}
+
 
 int __not_in_flash("main") main() {
 //int main() {
@@ -182,9 +270,12 @@ int __not_in_flash("main") main() {
 	DisplayOpen();
 	ConOpen();
 
-	sd_init_driver();
+	// SPI
+	init_spi();
+
+	//sd_init_driver();
 	Con_printf("Picolo System v%s\n%d bytes free \n", PLATFORM_VERSION_STRING, P_GetFreeHeap());
-	Con_printf("card free:%ldMB\n", SDCardTest()/(1024*1024));
+	//Con_printf("card free:%ldMB\n", SDCardTest()/(1024*1024));
 	Con_puts("ready\n");
 
 	// drive text display and tuh at 50hz
@@ -192,6 +283,17 @@ int __not_in_flash("main") main() {
     add_repeating_timer_ms(-20, display_timer_callback, NULL, &timer);
 
 	while (1) {
+
+
+		// TEST TEST TEST
+#if 0
+		uint32_t spi_data;
+		int bytes_read = spi_read_blocking(SPI_PORT, 0x00, (uint8_t*)&spi_data, 2);
+        //if (bytes_read == 4) {
+			Con_printf("spi data: 0x%08x\n", spi_data);
+		//}
+
+#endif
 
 		char *line = ShellReadInput();	// does not block
 		if(line) {
